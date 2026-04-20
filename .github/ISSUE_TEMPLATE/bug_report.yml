@@ -1,0 +1,109 @@
+name: 🐛 Bug report
+description: Report a defect in CarCam Pro.
+title: "[BUG] "
+labels: ["bug", "triage"]
+assignees:
+  - jwillz7667
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ### Before filing
+
+        - Searched existing issues to avoid duplicates.
+        - For **security** issues, use [SECURITY.md](https://github.com/jwillz7667/CarCamPro/blob/main/SECURITY.md) — not this form.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One or two sentences describing the bug.
+      placeholder: "Recording stops after ~45 minutes on iPhone 15 Pro in direct sunlight."
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Numbered list. Include exact taps, swipes, and timing.
+      placeholder: |
+        1. Open app, grant all permissions.
+        2. Tap "Start recording" on Home tab.
+        3. Leave device on dashboard in direct sunlight.
+        4. Wait 45 minutes.
+        5. Observe recording indicator disappears.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: input
+    id: app_version
+    attributes:
+      label: App version & build
+      placeholder: "1.0.0 (42)"
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: Device
+      placeholder: "iPhone 15 Pro"
+    validations:
+      required: true
+
+  - type: input
+    id: ios_version
+    attributes:
+      label: iOS version
+      placeholder: "26.4"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: thermal_state
+    attributes:
+      label: Thermal state at time of bug
+      options:
+        - Nominal
+        - Fair
+        - Serious
+        - Critical
+        - Unknown
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console / crash logs
+      description: Paste relevant log excerpts. If attaching a crash log file, drag it in.
+      render: shell
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or screen recordings
+      description: Drag files here.
+
+  - type: checkboxes
+    id: ack
+    attributes:
+      label: Acknowledgements
+      options:
+        - label: I confirm this report does not contain confidential information I am not authorized to share.
+          required: true

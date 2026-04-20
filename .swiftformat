@@ -1,0 +1,57 @@
+# CarCam Pro — SwiftFormat rules
+# https://github.com/nicklockwood/SwiftFormat
+
+# ─── targets ─────────────────────────────────────────────────────────────
+--swiftversion              6.0
+--exclude                   build,DerivedData,.build,docs
+
+# ─── formatting ──────────────────────────────────────────────────────────
+--indent                    4
+--maxwidth                  120
+--linebreaks                lf
+--trimwhitespace            always
+--emptybraces               no-space
+
+# ─── whitespace ─────────────────────────────────────────────────────────
+--ranges                    no-space
+--operatorfunc              spaced
+--nospaceoperators          ...,..<
+--wrapparameters            before-first
+--wrapcollections           before-first
+--closingparen              balanced
+
+# ─── tokens ─────────────────────────────────────────────────────────────
+--semicolons                never
+--commas                    inline
+--trailingclosures          false
+--allman                    false
+--binarygrouping            none
+--decimalgrouping           none
+--hexgrouping               none
+--hexliteralcase            uppercase
+--exponentcase              lowercase
+
+# ─── imports ────────────────────────────────────────────────────────────
+--importgrouping            testable-last
+
+# ─── self / redundancy ──────────────────────────────────────────────────
+--self                      remove
+--selfrequired              init
+--redundanttype             inferred
+--voidtype                  void
+--nilinit                   remove
+
+# ─── enabled rules ──────────────────────────────────────────────────────
+--enable                    markTypes
+--enable                    organizeDeclarations
+--enable                    sortedImports
+--enable                    sortedSwitchCases
+--enable                    strongifiedSelf
+--enable                    wrapConditionalBodies
+--enable                    wrapEnumCases
+--enable                    wrapMultilineStatementBraces
+--enable                    preferKeyPath
+--enable                    genericExtensions
+
+# Disable rules that fight with our house style.
+--disable                   wrapMultilineStatementBraces,hoistPatternLet

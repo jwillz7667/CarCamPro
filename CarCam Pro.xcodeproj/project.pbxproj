@@ -6,8 +6,19 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXContainerItemProxy section */
+		2FTEST0012F8C56B6000A4151 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 2F2F19BD2F8C56B6000A4151 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 2F2F19C42F8C56B6000A4151;
+			remoteInfo = "CarCam Pro";
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		2F2F19C52F8C56B6000A4151 /* CarCam Pro.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "CarCam Pro.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		2FTEST0022F8C56B6000A4151 /* CarCam ProTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "CarCam ProTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -29,10 +40,22 @@
 			path = "CarCam Pro";
 			sourceTree = "<group>";
 		};
+		2FTEST0032F8C56B6000A4151 /* CarCam ProTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "CarCam ProTests";
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		2F2F19C22F8C56B6000A4151 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		2FTEST0042F8C56B6000A4151 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -46,6 +69,7 @@
 			isa = PBXGroup;
 			children = (
 				2F2F19C72F8C56B6000A4151 /* CarCam Pro */,
+				2FTEST0032F8C56B6000A4151 /* CarCam ProTests */,
 				2F2F19C62F8C56B6000A4151 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -54,6 +78,7 @@
 			isa = PBXGroup;
 			children = (
 				2F2F19C52F8C56B6000A4151 /* CarCam Pro.app */,
+				2FTEST0022F8C56B6000A4151 /* CarCam ProTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -83,6 +108,27 @@
 			productReference = 2F2F19C52F8C56B6000A4151 /* CarCam Pro.app */;
 			productType = "com.apple.product-type.application";
 		};
+		2FTEST0052F8C56B6000A4151 /* CarCam ProTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2FTEST0092F8C56B6000A4151 /* Build configuration list for PBXNativeTarget "CarCam ProTests" */;
+			buildPhases = (
+				2FTEST0062F8C56B6000A4151 /* Sources */,
+				2FTEST0042F8C56B6000A4151 /* Frameworks */,
+				2FTEST0072F8C56B6000A4151 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				2FTEST0082F8C56B6000A4151 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				2FTEST0032F8C56B6000A4151 /* CarCam ProTests */,
+			);
+			name = "CarCam ProTests";
+			productName = "CarCam ProTests";
+			productReference = 2FTEST0022F8C56B6000A4151 /* CarCam ProTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -95,6 +141,10 @@
 				TargetAttributes = {
 					2F2F19C42F8C56B6000A4151 = {
 						CreatedOnToolsVersion = 26.4;
+					};
+					2FTEST0052F8C56B6000A4151 = {
+						CreatedOnToolsVersion = 26.4;
+						TestTargetID = 2F2F19C42F8C56B6000A4151;
 					};
 				};
 			};
@@ -113,12 +163,20 @@
 			projectRoot = "";
 			targets = (
 				2F2F19C42F8C56B6000A4151 /* CarCam Pro */,
+				2FTEST0052F8C56B6000A4151 /* CarCam ProTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		2F2F19C32F8C56B6000A4151 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		2FTEST0072F8C56B6000A4151 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -135,7 +193,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		2FTEST0062F8C56B6000A4151 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		2FTEST0082F8C56B6000A4151 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 2F2F19C42F8C56B6000A4151 /* CarCam Pro */;
+			targetProxy = 2FTEST0012F8C56B6000A4151 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		2F2F19D42F8C56B9000A4151 /* Debug */ = {
@@ -146,6 +219,7 @@
 				CODE_SIGN_ENTITLEMENTS = "CarCam Pro/CarCam_Pro.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 487LC4H9U4;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "CarCam Pro/Info.plist";
@@ -179,6 +253,7 @@
 				CODE_SIGN_ENTITLEMENTS = "CarCam Pro/CarCam_Pro.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 487LC4H9U4;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "CarCam Pro/Info.plist";
@@ -323,6 +398,48 @@
 			};
 			name = Release;
 		};
+		2FTEST00A2F8C56B6000A4151 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 487LC4H9U4;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "Res.CarCam-Pro.Tests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CarCam Pro.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/CarCam Pro";
+			};
+			name = Debug;
+		};
+		2FTEST00B2F8C56B6000A4151 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 487LC4H9U4;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "Res.CarCam-Pro.Tests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CarCam Pro.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/CarCam Pro";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -340,6 +457,15 @@
 			buildConfigurations = (
 				2F2F19D42F8C56B9000A4151 /* Debug */,
 				2F2F19D52F8C56B9000A4151 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		2FTEST0092F8C56B6000A4151 /* Build configuration list for PBXNativeTarget "CarCam ProTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2FTEST00A2F8C56B6000A4151 /* Debug */,
+				2FTEST00B2F8C56B6000A4151 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

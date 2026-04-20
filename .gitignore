@@ -1,0 +1,115 @@
+# ─────────────────────────────────────────────────────────────
+#  CarCam Pro — Git ignore rules
+# ─────────────────────────────────────────────────────────────
+
+## macOS ───────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+## Xcode ───────────────────────────────────────────────────────
+## User-specific Xcode state — never commit these.
+xcuserdata/
+*.xcuserstate
+*.xcuserdatad/
+*.xccheckout
+*.moved-aside
+DerivedData/
+build/
+.build/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+timeline.xctimeline
+playground.xcworkspace
+
+## Keep shared schemes — comment out the line below if your team
+## prefers to regenerate schemes per-machine.
+!xcshareddata/
+
+## Swift Package Manager ──────────────────────────────────────
+.swiftpm/
+Packages/
+Package.pins
+Package.resolved
+.build/
+*.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
+*.xcodeproj/*.xcworkspace/xcshareddata/swiftpm/
+
+## CocoaPods (not currently used; keep guard-railed) ──────────
+Pods/
+*.xcworkspace/contents.xcworkspacedata
+
+## Carthage ────────────────────────────────────────────────────
+Carthage/Build/
+Carthage/Checkouts/
+
+## fastlane ────────────────────────────────────────────────────
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+
+## Provisioning / signing ──────────────────────────────────────
+*.mobileprovision
+*.p12
+*.certSigningRequest
+*.cer
+*.p8
+AuthKey_*.p8
+
+## Secrets / environment ──────────────────────────────────────
+*.env
+*.env.*
+!*.env.example
+secrets.plist
+GoogleService-Info.plist
+*.private.xcconfig
+
+## Editors / IDEs ──────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.claude/
+
+## Logs / crash dumps / profiling ─────────────────────────────
+*.log
+*.crash
+*.ips
+Instruments.app/
+*.trace
+
+## Test output / coverage ─────────────────────────────────────
+test_output/
+coverage/
+*.coverage
+*.gcov
+*.xccovreport
+*.xccovarchive
+xcresult-bundle/
+*.xcresult
+
+## Misc ────────────────────────────────────────────────────────
+*.orig
+*.rej
+*.bak
+*.tmp
+
+## Node / tooling sidecars (if any scripts use them) ──────────
+node_modules/
+npm-debug.log*
+yarn-error.log

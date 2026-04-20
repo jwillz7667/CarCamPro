@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/jwillz7667/CarCamPro/blob/main/SECURITY.md
+    about: Security issues must be reported privately. Do NOT open a public issue.
+  - name: Licensing inquiry
+    url: mailto:jwillz7667@gmail.com
+    about: Proprietary licensing, commercial use, or distribution inquiries.

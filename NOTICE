@@ -1,0 +1,24 @@
+CarCam Pro
+Copyright (c) 2026 Res. All Rights Reserved.
+
+================================================================================
+
+This software and its source code are the confidential and proprietary
+information of Res. Unauthorized use, reproduction, modification, or
+distribution is strictly prohibited and may result in civil and criminal
+penalties. See the LICENSE file for the complete terms of use.
+
+CarCam Pro is built exclusively on Apple first-party frameworks
+(SwiftUI, SwiftData, AVFoundation, CoreMotion, CoreLocation, MapKit,
+StoreKit 2). No third-party open-source software is linked into the
+application binary at this time. Should that change in a future release,
+this NOTICE file will be updated to list the applicable attributions and
+license terms.
+
+"iPhone", "iPad", "iOS", "iPadOS", "Xcode", "Swift", "SwiftUI",
+"Dynamic Island", and "Liquid Glass" are trademarks of Apple Inc.,
+registered in the U.S. and other countries. All references to Apple
+products and technologies are for identification and interoperability
+purposes only.
+
+For licensing inquiries: jwillz7667@gmail.com

@@ -1,0 +1,30 @@
+# CarCam Pro — CODEOWNERS
+# The last matching pattern wins. Owners listed here are auto-requested
+# as PR reviewers and are required for merge when branch protection
+# "Require review from Code Owners" is enabled.
+
+# ─── global fallback ─────────────────────────────────────────────────────
+*                                   @jwillz7667
+
+# ─── app shell / DI ──────────────────────────────────────────────────────
+/CarCam\ Pro/App/                   @jwillz7667
+/CarCam\ Pro/CarCam_ProApp.swift    @jwillz7667
+
+# ─── core pipeline ───────────────────────────────────────────────────────
+/CarCam\ Pro/Core/Camera/           @jwillz7667
+/CarCam\ Pro/Core/Recording/        @jwillz7667
+/CarCam\ Pro/Core/Thermal/          @jwillz7667
+/CarCam\ Pro/Core/Incident/         @jwillz7667
+/CarCam\ Pro/Core/Location/         @jwillz7667
+/CarCam\ Pro/Core/Storage/          @jwillz7667
+
+# ─── design system (UI contract) ─────────────────────────────────────────
+/CarCam\ Pro/Shared/DesignSystem/   @jwillz7667
+
+# ─── project config + security-sensitive surfaces ────────────────────────
+/CarCam\ Pro.xcodeproj/             @jwillz7667
+/CarCam\ Pro/Info.plist             @jwillz7667
+/CarCam\ Pro/CarCam_Pro.entitlements @jwillz7667
+/LICENSE                            @jwillz7667
+/SECURITY.md                        @jwillz7667
+/.github/                           @jwillz7667

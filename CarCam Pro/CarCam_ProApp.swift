@@ -1,18 +1,15 @@
-//
-//  CarCam_ProApp.swift
-//  CarCam Pro
-//
-//  Created by Justin Williams on 4/12/26.
-//
-
 import SwiftUI
 import SwiftData
 
 @main
 struct CarCam_ProApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @State private var container = DependencyContainer()
+
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
+            RecordingSession.self,
+            VideoClip.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
@@ -25,7 +22,13 @@ struct CarCam_ProApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootView()
+                .environment(container)
+                .preferredColorScheme(.dark)
+                .tint(CCTheme.amber)
+                .onAppear {
+                    container.configure(modelContainer: sharedModelContainer)
+                }
         }
         .modelContainer(sharedModelContainer)
     }

@@ -4,7 +4,32 @@
 <dict>
 	<key>UIBackgroundModes</key>
 	<array>
-		<string>remote-notification</string>
+		<string>audio</string>
+		<string>location</string>
+		<string>processing</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>CarCam Pro needs camera access to record driving footage</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>CarCam Pro can record audio with your driving footage</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>CarCam Pro uses your location to log speed and position</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>CarCam Pro needs continuous location access to record GPS data while you use other apps</string>
+	<key>NSMotionUsageDescription</key>
+	<string>CarCam Pro uses motion data to detect impacts and hard braking</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>CarCam Pro saves locked incident clips to your Photos library</string>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+	</dict>
+	<key>UIRequiresFullScreen</key>
+	<true/>
+	<key>UIStatusBarStyle</key>
+	<string>UIStatusBarStyleLightContent</string>
+	<key>UIUserInterfaceStyle</key>
+	<string>Dark</string>
 </dict>
 </plist>

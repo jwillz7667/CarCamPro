@@ -1,0 +1,189 @@
+CARCAM PRO — PROPRIETARY SOFTWARE LICENSE AGREEMENT
+
+Copyright (c) 2026 Res. All Rights Reserved.
+
+================================================================================
+
+IMPORTANT — READ CAREFULLY. THIS IS A LEGALLY BINDING AGREEMENT.
+
+This Proprietary Software License Agreement (this "Agreement") is entered into
+by and between Res ("Licensor") and any person or entity ("Licensee") that
+accesses, views, downloads, clones, uses, compiles, installs, or otherwise
+interacts with the source code, compiled binaries, documentation, design
+assets, or any other materials contained within or derived from this
+repository (collectively, the "Software"). By engaging in any of the foregoing
+activities, Licensee acknowledges having read this Agreement, understanding
+it, and agreeing to be bound by its terms.
+
+IF LICENSEE DOES NOT AGREE TO THESE TERMS, LICENSEE MUST IMMEDIATELY CEASE ALL
+USE OF THE SOFTWARE AND DELETE ALL COPIES IN LICENSEE'S POSSESSION.
+
+================================================================================
+
+1.  DEFINITIONS
+
+    1.1  "Software" means the CarCam Pro iOS application, including without
+         limitation all source code, object code, compiled binaries, scripts,
+         configuration files, design assets, user interface mockups, database
+         schemas, documentation, comments, and any updates, upgrades, patches,
+         or derivative works thereof.
+
+    1.2  "Confidential Information" means the Software and any non-public
+         information disclosed by Licensor, including but not limited to
+         technical architecture, algorithms, business logic, thermal
+         management strategies, incident-detection heuristics, product
+         roadmaps, and pricing models.
+
+    1.3  "Authorized User" means an individual or entity that has received
+         express, written authorization from Licensor to access the Software.
+
+2.  GRANT OF LICENSE
+
+    Subject to the terms and conditions of this Agreement, and only upon
+    express written authorization from Licensor, Licensor grants to Licensee
+    a limited, non-exclusive, non-transferable, non-sublicensable, revocable
+    license to access and view the Software solely for the internal purpose
+    for which such access was granted (e.g., employment, contracted
+    engagement, evaluation, or code review).
+
+    No other rights or licenses, whether express or implied, are granted under
+    this Agreement. All rights not expressly granted are reserved by Licensor.
+
+3.  RESTRICTIONS
+
+    Licensee shall NOT, and shall not permit any third party to:
+
+    (a)  copy, reproduce, distribute, publish, or publicly display the
+         Software, in whole or in part, in any medium;
+
+    (b)  modify, adapt, translate, create derivative works based on, or
+         incorporate the Software (or any portion thereof) into any other
+         software, product, or service;
+
+    (c)  reverse engineer, decompile, disassemble, or otherwise attempt to
+         derive the source code of any compiled portion of the Software,
+         except and only to the extent such activity is expressly permitted
+         by applicable law notwithstanding this limitation;
+
+    (d)  sell, rent, lease, loan, sublicense, assign, or otherwise transfer
+         the Software or any rights therein to any third party;
+
+    (e)  use the Software to develop a competing product or service, or to
+         benchmark against any product or service other than Licensor's;
+
+    (f)  remove, alter, or obscure any proprietary notices (including
+         copyright and trademark notices) appearing on or in the Software;
+
+    (g)  use the Software in violation of any applicable law, regulation, or
+         third-party right;
+
+    (h)  disclose the Software or any Confidential Information to any third
+         party without the prior written consent of Licensor; or
+
+    (i)  use the Software to train, fine-tune, evaluate, or otherwise feed
+         any machine-learning model, large language model, neural network, or
+         generative AI system, except where such use has been expressly
+         authorized in writing by Licensor.
+
+4.  OWNERSHIP AND INTELLECTUAL PROPERTY
+
+    The Software is licensed, not sold. Licensor retains all right, title,
+    and interest in and to the Software, including all intellectual property
+    rights therein. This Agreement conveys no ownership rights in the
+    Software. All trademarks, service marks, trade names, and logos appearing
+    in the Software are proprietary to Licensor or their respective owners
+    and may not be used without prior written permission.
+
+5.  CONFIDENTIALITY
+
+    Licensee acknowledges that the Software constitutes Confidential
+    Information of Licensor. Licensee shall (a) hold the Software in strict
+    confidence, (b) use no less than reasonable care to protect the Software
+    from unauthorized disclosure, and (c) not disclose the Software to any
+    third party without Licensor's prior written consent. Licensee's
+    confidentiality obligations shall survive termination of this Agreement
+    indefinitely.
+
+6.  TERMINATION
+
+    This Agreement is effective until terminated. Licensor may terminate this
+    Agreement at any time, with or without cause, by providing notice to
+    Licensee (including by revoking repository access). Upon termination,
+    Licensee shall immediately cease all use of the Software and destroy all
+    copies in Licensee's possession or control, and shall certify such
+    destruction in writing upon Licensor's request. Sections 3, 4, 5, 7, 8,
+    9, and 10 shall survive any termination of this Agreement.
+
+7.  NO WARRANTY
+
+    THE SOFTWARE IS PROVIDED "AS IS" AND "AS AVAILABLE", WITHOUT WARRANTY OF
+    ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+    WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE,
+    AND NON-INFRINGEMENT. LICENSOR DOES NOT WARRANT THAT THE SOFTWARE WILL BE
+    ERROR-FREE, UNINTERRUPTED, OR SECURE, OR THAT ANY DEFECTS WILL BE
+    CORRECTED.
+
+8.  LIMITATION OF LIABILITY
+
+    TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL
+    LICENSOR BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL,
+    OR PUNITIVE DAMAGES, OR ANY LOSS OF PROFITS, REVENUE, DATA, USE, OR
+    GOODWILL, ARISING OUT OF OR IN CONNECTION WITH THIS AGREEMENT OR THE
+    SOFTWARE, WHETHER BASED ON CONTRACT, TORT (INCLUDING NEGLIGENCE), STRICT
+    LIABILITY, OR ANY OTHER LEGAL THEORY, EVEN IF LICENSOR HAS BEEN ADVISED
+    OF THE POSSIBILITY OF SUCH DAMAGES. IN NO EVENT SHALL LICENSOR'S
+    AGGREGATE LIABILITY UNDER THIS AGREEMENT EXCEED ONE HUNDRED U.S. DOLLARS
+    (USD $100.00).
+
+9.  INDEMNIFICATION
+
+    Licensee shall indemnify, defend, and hold harmless Licensor and its
+    officers, directors, employees, and agents from and against any and all
+    claims, damages, losses, liabilities, costs, and expenses (including
+    reasonable attorneys' fees) arising out of or related to Licensee's
+    breach of this Agreement or misuse of the Software.
+
+10. GENERAL
+
+    10.1  Governing Law. This Agreement shall be governed by and construed
+          in accordance with the laws of the State of California, United
+          States, without regard to its conflict of laws principles. The
+          parties consent to the exclusive jurisdiction and venue of the
+          state and federal courts located in San Francisco County,
+          California, for any dispute arising from this Agreement.
+
+    10.2  Entire Agreement. This Agreement constitutes the entire agreement
+          between the parties concerning the Software and supersedes all
+          prior or contemporaneous agreements, representations, warranties,
+          and understandings, whether written or oral.
+
+    10.3  Severability. If any provision of this Agreement is held to be
+          invalid or unenforceable, such provision shall be enforced to the
+          maximum extent permissible, and the remaining provisions shall
+          remain in full force and effect.
+
+    10.4  No Waiver. The failure of Licensor to enforce any right or
+          provision of this Agreement shall not constitute a waiver of such
+          right or provision.
+
+    10.5  Assignment. Licensee may not assign or transfer this Agreement, by
+          operation of law or otherwise, without Licensor's prior written
+          consent. Any attempted assignment in violation of this section
+          shall be null and void. Licensor may assign this Agreement freely.
+
+    10.6  Injunctive Relief. Licensee acknowledges that a breach of
+          Sections 3, 4, or 5 would cause irreparable harm to Licensor for
+          which monetary damages would be inadequate, and Licensor shall be
+          entitled to seek injunctive or other equitable relief without the
+          requirement of posting a bond.
+
+    10.7  Export Control. The Software may be subject to U.S. export control
+          laws. Licensee shall comply with all applicable export laws and
+          regulations and shall not export, re-export, or transfer the
+          Software to any prohibited destination, end-user, or end-use.
+
+================================================================================
+
+For licensing inquiries, contact: jwillz7667@gmail.com
+
+© 2026 Res. All Rights Reserved.

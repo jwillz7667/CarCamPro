@@ -1,0 +1,62 @@
+name: ✨ Feature request
+description: Propose a new capability or an enhancement to an existing one.
+title: "[FEATURE] "
+labels: ["enhancement", "triage"]
+assignees:
+  - jwillz7667
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What user problem or business need does this solve?
+      placeholder: "Drivers want to review a specific clip without scrolling the full archive."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Sketch the feature. Mockups, flows, or pseudocode welcome.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you thought about and why they were rejected.
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Thermal / battery / storage impact
+      description: Expected cost of shipping this. Be specific.
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Which area of the app?
+      multiple: true
+      options:
+        - Onboarding
+        - Home dashboard
+        - Live HUD
+        - Map
+        - Trips / incident playback
+        - Settings
+        - Core recording pipeline
+        - Thermal / battery management
+        - Incident detection
+        - Storage / sync
+        - Subscription / paywall
+        - Other
+
+  - type: checkboxes
+    id: ack
+    attributes:
+      label: Acknowledgements
+      options:
+        - label: I searched existing issues to avoid filing a duplicate.
+          required: true

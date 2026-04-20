@@ -1,0 +1,61 @@
+# ─────────────────────────────────────────────────────────────
+#  CarCam Pro — Git attributes
+#  Normalize line endings, flag binaries, enable Xcode-friendly
+#  diffs for pbxproj.
+# ─────────────────────────────────────────────────────────────
+
+# Default: normalize to LF on commit, auto on checkout.
+*                 text=auto eol=lf
+
+# Swift & Obj-C sources always LF.
+*.swift           text eol=lf diff=swift
+*.m               text eol=lf
+*.mm              text eol=lf
+*.h               text eol=lf
+*.c               text eol=lf
+*.cpp             text eol=lf
+
+# Docs / config.
+*.md              text eol=lf
+*.yml             text eol=lf
+*.yaml            text eol=lf
+*.json            text eol=lf
+*.xml             text eol=lf
+*.plist           text eol=lf merge=union
+*.entitlements    text eol=lf
+*.xcconfig        text eol=lf
+
+# Xcode project files — LF, mergetool-friendly union merges avoid
+# most conflicts when two PRs both add files.
+*.pbxproj         text eol=lf merge=union -diff
+*.xcscheme        text eol=lf
+contents.xcworkspacedata  text eol=lf
+
+# Binaries — never try to diff or merge these.
+*.png             binary
+*.jpg             binary
+*.jpeg            binary
+*.gif             binary
+*.heic            binary
+*.heif            binary
+*.pdf             binary
+*.mov             binary
+*.mp4             binary
+*.mp3             binary
+*.wav             binary
+*.caf             binary
+*.zip             binary
+*.tar             binary
+*.tgz             binary
+*.gz              binary
+*.ttf             binary
+*.otf             binary
+*.woff            binary
+*.woff2           binary
+
+# Xcode asset catalogs.
+*.xcassets/**     binary
+
+# Don't count generated / vendored files toward language stats.
+docs/carcam/**    linguist-vendored
+*.pbxproj         linguist-generated
