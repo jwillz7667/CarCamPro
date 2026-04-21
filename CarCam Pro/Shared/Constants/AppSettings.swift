@@ -183,6 +183,17 @@ final class AppSettings {
         set { cloud.writeThrough(newValue, forKey: Keys.detectionAudioEnabled) }
     }
 
+    /// Whether to overlay a live telemetry HUD on the LIVE camera view.
+    /// Intended for QA and field verification — off by default. The HUD
+    /// surfaces the detection pipeline's frame throughput, drop reasons,
+    /// per-frame inference latency, and Core ML model load state so the
+    /// user can verify detection is actually running without waiting for
+    /// a real emergency-vehicle encounter.
+    var showDetectionDiagnostics: Bool {
+        get { defaults.bool(forKey: Keys.showDetectionDiagnostics) }
+        set { cloud.writeThrough(newValue, forKey: Keys.showDetectionDiagnostics) }
+    }
+
     // MARK: - External-change signaling
 
     /// Called by `DependencyContainer` after `CloudSettingsStore` merges an
@@ -234,6 +245,7 @@ final class AppSettings {
             case Keys.hapticsEnabled:             self.hapticsEnabled = self.hapticsEnabled
             case Keys.policeDetectionEnabled:     self.policeDetectionEnabled = self.policeDetectionEnabled
             case Keys.detectionAudioEnabled:      self.detectionAudioEnabled = self.detectionAudioEnabled
+            case Keys.showDetectionDiagnostics:   self.showDetectionDiagnostics = self.showDetectionDiagnostics
             default:                              continue
             }
         }
@@ -269,6 +281,7 @@ final class AppSettings {
         static let hapticsEnabled = "hapticsEnabled"
         static let policeDetectionEnabled = "policeDetectionEnabled"
         static let detectionAudioEnabled = "detectionAudioEnabled"
+        static let showDetectionDiagnostics = "showDetectionDiagnostics"
     }
 }
 

@@ -10,11 +10,13 @@ RUN corepack enable && corepack prepare pnpm@9.14.4 --activate
 WORKDIR /app
 
 # ───── Deps: install cached, run prisma generate ─────
+# Note: BuildKit cache mounts are intentionally omitted so this Dockerfile
+# builds cleanly under Railway (which rejects unprefixed `--mount=type=cache`
+# IDs). The pnpm install runs from scratch each build — acceptable tradeoff.
 FROM base AS deps
 COPY package.json pnpm-lock.yaml* ./
 COPY prisma ./prisma
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
-    pnpm install --frozen-lockfile --prod=false && \
+RUN pnpm install --frozen-lockfile --prod=false && \
     pnpm prisma generate
 
 # ───── Build: TypeScript → dist ─────

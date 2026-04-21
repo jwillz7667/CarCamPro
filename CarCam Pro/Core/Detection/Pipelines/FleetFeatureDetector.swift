@@ -21,6 +21,11 @@ import OSLog
 final class FleetFeatureDetector: @unchecked Sendable {
     private var visionModel: VNCoreMLModel?
 
+    /// Whether the Core ML model loaded. Missing → all-zero scores on every
+    /// call; fusion treats fleet-capable-model-alone as insufficient, so a
+    /// missing model is safe but reduces pipeline recall.
+    var isModelLoaded: Bool { visionModel != nil }
+
     init() {
         loadModel()
     }

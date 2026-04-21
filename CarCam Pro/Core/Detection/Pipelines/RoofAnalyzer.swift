@@ -24,6 +24,11 @@ import OSLog
 final class RoofAnalyzer: @unchecked Sendable {
     private var visionModel: VNCoreMLModel?
 
+    /// Whether the Core ML model loaded. The heuristic fallback runs when
+    /// false — the telemetry layer reports this so QA can distinguish
+    /// "degraded mode" from a fully-functional ship.
+    var isModelLoaded: Bool { visionModel != nil }
+
     init() {
         loadModel()
     }

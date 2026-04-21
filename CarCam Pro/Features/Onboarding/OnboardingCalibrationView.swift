@@ -18,7 +18,7 @@ struct OnboardingCalibrationView: View {
     }
 
     var body: some View {
-        OnboardingFrame(step: 3) {
+        OnboardingFrame(step: 4, total: 6) {
             OnboardingTitle(
                 eyebrow: "Calibration",
                 title: "Level your mount",

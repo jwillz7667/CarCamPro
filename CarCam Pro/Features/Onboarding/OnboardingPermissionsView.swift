@@ -52,7 +52,7 @@ struct OnboardingPermissionsView: View {
     @State private var locationDelegate: PermissionsLocationDelegate?
 
     var body: some View {
-        OnboardingFrame(step: 2) {
+        OnboardingFrame(step: 3, total: 6) {
             OnboardingTitle(
                 eyebrow: "Authorizations",
                 title: "Grant access",

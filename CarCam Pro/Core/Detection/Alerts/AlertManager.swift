@@ -52,20 +52,31 @@ final class AlertManager {
     }
 
     private func fireAlert(for a: VehicleThreatAssessment) {
-        hapticGenerator.notificationOccurred(
-            a.threatLevel == .confirmed ? .warning : .success
-        )
-        playChime(urgent: a.threatLevel == .confirmed)
+        if AppSettings.shared.hapticsEnabled {
+            hapticGenerator.notificationOccurred(
+                a.threatLevel == .confirmed ? .warning : .success
+            )
+        }
+        if AppSettings.shared.detectionAudioEnabled {
+            playChime(urgent: a.threatLevel == .confirmed)
+        }
+        DetectionTelemetry.shared.recordAlertFired()
         AppLogger.detection.notice(
             "Alert \(String(describing: a.threatLevel)) score=\(a.fusedScore) reasons=\(a.reasoning.joined(separator: ", "))"
         )
     }
 
+    /// Play the alert chime through the currently-active `AVAudioSession`.
+    ///
+    /// Intentionally does NOT call `setCategory` — the recording engine owns
+    /// the session (`.playAndRecord` with `.mixWithOthers`). Mutating the
+    /// category here would silence recording capture and/or lose Bluetooth
+    /// routing. `AVAudioPlayer` happily shares whatever session is already
+    /// configured, which is exactly what we want.
     private func playChime(urgent: Bool) {
         let name = urgent ? "chime_urgent" : "chime_subtle"
         guard let url = Bundle.main.url(forResource: name, withExtension: "caf") else { return }
         do {
-            try AVAudioSession.sharedInstance().setCategory(.ambient, options: [.mixWithOthers])
             audioPlayer = try AVAudioPlayer(contentsOf: url)
             audioPlayer?.volume = 0.9
             audioPlayer?.play()

@@ -13,8 +13,7 @@ WORKDIR /app
 FROM base AS deps
 COPY package.json pnpm-lock.yaml* ./
 COPY prisma ./prisma
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
-    pnpm install --frozen-lockfile --prod=false && \
+RUN pnpm install --frozen-lockfile --prod=false && \
     pnpm prisma generate
 
 FROM deps AS build

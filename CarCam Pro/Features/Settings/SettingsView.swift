@@ -161,10 +161,16 @@ struct SettingsView: View {
                 set: { coord?.setDetectionAudioEnabled($0) }
             ))
             .disabled(!settings.policeDetectionEnabled)
+
+            Toggle("Show Diagnostics Overlay", isOn: Binding(
+                get: { settings.showDetectionDiagnostics },
+                set: { settings.showDetectionDiagnostics = $0 }
+            ))
+            .disabled(!settings.policeDetectionEnabled)
         } header: {
             Text("Detection")
         } footer: {
-            Text("On-device detection of marked cruisers, unmarked fleet vehicles, and active emergency lights. All processing happens locally — no frames leave your device.")
+            Text("On-device detection of marked cruisers, unmarked fleet vehicles, and active emergency lights. All processing happens locally — no frames leave your device. Diagnostics overlay shows live pipeline health on the LIVE camera view — useful for verifying detection is running.")
         }
     }
 

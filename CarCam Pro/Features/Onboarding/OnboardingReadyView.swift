@@ -12,7 +12,7 @@ struct OnboardingReadyView: View {
     @State private var checks: [SystemCheck] = SystemCheck.placeholders
 
     var body: some View {
-        OnboardingFrame(step: 4) {
+        OnboardingFrame(step: 6, total: 6) {
             OnboardingTitle(
                 eyebrow: "All Set",
                 title: "You're ready to record",

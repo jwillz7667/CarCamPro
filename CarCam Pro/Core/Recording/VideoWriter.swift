@@ -10,6 +10,16 @@ final class VideoWriter: @unchecked Sendable {
     private(set) var isWriting = false
     private var hasStartedSession = false
 
+    /// Sticky failure flag — set the first time we observe `assetWriter
+    /// .status == .failed` during an append. Subsequent appends short-circuit
+    /// immediately instead of re-invoking the (failed) AVFoundation call.
+    private var hasFailed = false
+
+    /// Invoked exactly once when the writer transitions into a terminal
+    /// failure state. `SegmentManager` forwards this up to `RecordingEngine`
+    /// which stops the session and surfaces the error in the UI.
+    nonisolated(unsafe) var onFailure: (@Sendable (Error) -> Void)?
+
     init(outputURL: URL) {
         self.outputURL = outputURL
     }
@@ -88,21 +98,44 @@ final class VideoWriter: @unchecked Sendable {
     }
 
     func appendVideoBuffer(_ sampleBuffer: CMSampleBuffer) {
-        guard isWriting, hasStartedSession,
+        guard isWriting, hasStartedSession, !hasFailed,
               let videoInput,
               videoInput.isReadyForMoreMediaData else {
             return
         }
-        videoInput.append(sampleBuffer)
+        let ok = videoInput.append(sampleBuffer)
+        if !ok { handleAppendFailure(channel: "video") }
     }
 
     func appendAudioBuffer(_ sampleBuffer: CMSampleBuffer) {
-        guard isWriting, hasStartedSession,
+        guard isWriting, hasStartedSession, !hasFailed,
               let audioInput,
               audioInput.isReadyForMoreMediaData else {
             return
         }
-        audioInput.append(sampleBuffer)
+        let ok = audioInput.append(sampleBuffer)
+        if !ok { handleAppendFailure(channel: "audio") }
+    }
+
+    /// Called when `AVAssetWriterInput.append` returns `false` — the writer
+    /// is in `.failed` state and will never accept another buffer. We flip
+    /// the sticky `hasFailed` flag, log the AVError, and fire the
+    /// `onFailure` callback exactly once so the engine can tear down.
+    private func handleAppendFailure(channel: String) {
+        guard !hasFailed else { return }
+        hasFailed = true
+        isWriting = false
+        let error = assetWriter?.error
+            ?? VideoWriterError.finishFailed("\(channel) append failed (no error detail)")
+        AppLogger.recording.error(
+            "VideoWriter \(channel) append failed (status=\(self.assetWriter?.status.rawValue ?? -1)): \(error.localizedDescription)"
+        )
+        // Best-effort: remove the partial file so the FIFO cap doesn't
+        // account for a 0-byte clip that can't be played back.
+        if FileManager.default.fileExists(atPath: outputURL.path) {
+            try? FileManager.default.removeItem(at: outputURL)
+        }
+        onFailure?(error)
     }
 
     func finish() async throws -> URL {

@@ -4,9 +4,21 @@ import UIKit
 import OSLog
 
 final class SegmentManager: @unchecked Sendable {
+    // `rotationLock` guards every field below up to and including
+    // `currentSegmentIndex`. The camera delegate calls `processSampleBuffer`
+    // on `cameraQueue` while `stopCurrentSegment` is invoked from the main
+    // actor and `rotateSegment` spawns a `Task.detached` finalizer — so
+    // rotation state must be pinned with a mutex rather than relying on
+    // the camera queue alone.
+    private let rotationLock = NSLock()
     private var currentProxy: WriterProxy?
     private var nextProxy: WriterProxy?
     private var segmentStartTime: CMTime?
+    /// Wall-clock timestamp captured the moment `segmentStartTime` is
+    /// first assigned. Lets us produce accurate `VideoClip.startDate`
+    /// values that align with the PTS boundary rather than the
+    /// finalize-completion time.
+    private var segmentStartWallClock: Date?
     private var isPreWarming = false
     private var isRotating = false
 
@@ -20,6 +32,9 @@ final class SegmentManager: @unchecked Sendable {
     private let audioEnabled: Bool
 
     nonisolated(unsafe) var onSegmentCompleted: (@Sendable (Int) -> Void)?
+    /// Invoked when a writer reports a terminal failure. The engine treats
+    /// this as a recording-fatal event and stops the session.
+    nonisolated(unsafe) var onWriterFailure: (@Sendable (Error) -> Void)?
 
     init(
         segmentDuration: TimeInterval,
@@ -40,51 +55,77 @@ final class SegmentManager: @unchecked Sendable {
     // MARK: - Start / Stop
 
     func startFirstSegment() throws -> WriterProxy {
-        currentSegmentIndex = 1
         let proxy = try createWriterProxy(segmentIndex: 1)
+        rotationLock.lock()
+        currentSegmentIndex = 1
         currentProxy = proxy
+        segmentStartTime = nil
+        segmentStartWallClock = nil
+        rotationLock.unlock()
         return proxy
     }
 
     func stopCurrentSegment() async throws -> URL? {
-        guard let proxy = currentProxy else { return nil }
-
+        // Snapshot the state we need under the lock, then release it
+        // before hitting `await` so we don't hold a mutex across a
+        // suspension point.
+        rotationLock.lock()
+        let proxy = currentProxy
+        let index = currentSegmentIndex
+        let startWall = segmentStartWallClock
         currentProxy = nil
         nextProxy = nil
+        segmentStartTime = nil
+        segmentStartWallClock = nil
+        rotationLock.unlock()
 
+        guard let proxy else { return nil }
         let url = try await proxy.writer.finish()
-        await saveClipMetadata(fileURL: url, segmentIndex: currentSegmentIndex)
+        await saveClipMetadata(
+            fileURL: url,
+            segmentIndex: index,
+            startWallClock: startWall ?? Date().addingTimeInterval(-segmentDuration)
+        )
         return url
     }
 
     // MARK: - Sample Buffer Processing
 
     func processSampleBuffer(_ sampleBuffer: CMSampleBuffer, isVideo: Bool) {
-        guard let proxy = currentProxy else { return }
-
         let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
 
-        // Initialize segment start time on first buffer
+        // Capture the proxy we will write into plus enough state to decide
+        // whether to trigger a pre-warm or rotation — all under one lock,
+        // so a concurrent stop/rotation can't tear it.
+        rotationLock.lock()
+        let proxy = currentProxy
         if segmentStartTime == nil {
             segmentStartTime = timestamp
+            segmentStartWallClock = Date()
         }
+        let startTime = segmentStartTime
+        let shouldPreWarm: Bool = {
+            guard let start = startTime else { return false }
+            let elapsed = CMTimeGetSeconds(CMTimeSubtract(timestamp, start))
+            return elapsed >= segmentDuration - AppConstants.preWarmLeadTime
+                && !isPreWarming
+                && nextProxy == nil
+        }()
+        let shouldRotate: Bool = {
+            guard let start = startTime else { return false }
+            let elapsed = CMTimeGetSeconds(CMTimeSubtract(timestamp, start))
+            return elapsed >= segmentDuration && !isRotating
+        }()
+        if shouldPreWarm { isPreWarming = true }
+        if shouldRotate { isRotating = true }
+        rotationLock.unlock()
 
-        // Check elapsed time
-        if let startTime = segmentStartTime {
-            let elapsed = CMTimeGetSeconds(CMTimeSubtract(timestamp, startTime))
+        guard let proxy else { return }
 
-            // Pre-warm next writer 2 seconds before rotation
-            if elapsed >= segmentDuration - AppConstants.preWarmLeadTime && !isPreWarming && nextProxy == nil {
-                preWarmNextSegment()
-            }
+        if shouldPreWarm { preWarmNextSegment() }
+        if shouldRotate { rotateSegment(atTime: timestamp) }
 
-            // Rotate at segment boundary
-            if elapsed >= segmentDuration && !isRotating {
-                rotateSegment(atTime: timestamp)
-            }
-        }
-
-        // Write to current segment
+        // Write to current segment.
         if isVideo {
             proxy.handleVideoSampleBuffer(sampleBuffer)
         } else {
@@ -95,63 +136,83 @@ final class SegmentManager: @unchecked Sendable {
     // MARK: - Private
 
     private func preWarmNextSegment() {
-        isPreWarming = true
+        rotationLock.lock()
+        let nextIndex = currentSegmentIndex + 1
+        rotationLock.unlock()
 
+        // `createWriterProxy` creates + configures an AVAssetWriter which
+        // does real file-system I/O. Perform it outside the rotation lock.
+        let newProxy: WriterProxy?
         do {
-            let nextIndex = currentSegmentIndex + 1
-            let proxy = try createWriterProxy(segmentIndex: nextIndex)
-            nextProxy = proxy
+            newProxy = try createWriterProxy(segmentIndex: nextIndex)
             AppLogger.recording.debug("Pre-warmed segment \(nextIndex)")
         } catch {
             AppLogger.recording.error("Failed to pre-warm next segment: \(error.localizedDescription)")
+            newProxy = nil
         }
 
+        rotationLock.lock()
+        nextProxy = newProxy
         isPreWarming = false
+        rotationLock.unlock()
     }
 
     private func rotateSegment(atTime timestamp: CMTime) {
-        isRotating = true
-
+        rotationLock.lock()
         let previousProxy = currentProxy
         let previousIndex = currentSegmentIndex
+        let previousStartWall = segmentStartWallClock
+        var newProxy = nextProxy
+        nextProxy = nil
+        rotationLock.unlock()
 
-        // Swap to next writer
-        if let next = nextProxy {
-            currentProxy = next
-            nextProxy = nil
-        } else {
-            // If pre-warming didn't complete, create writer now
+        // If the pre-warm didn't complete in time, synchronously create the
+        // next writer now. This can block the camera queue briefly — rare
+        // path; the pre-warm lead is tuned so we typically avoid it.
+        if newProxy == nil {
             do {
-                let proxy = try createWriterProxy(segmentIndex: currentSegmentIndex + 1)
-                currentProxy = proxy
+                newProxy = try createWriterProxy(segmentIndex: previousIndex + 1)
             } catch {
                 AppLogger.recording.error("Failed to create writer during rotation: \(error.localizedDescription)")
+                rotationLock.lock()
                 isRotating = false
+                rotationLock.unlock()
+                onWriterFailure?(error)
                 return
             }
         }
 
-        currentSegmentIndex += 1
+        rotationLock.lock()
+        currentProxy = newProxy
+        currentSegmentIndex = previousIndex + 1
         segmentStartTime = timestamp
+        segmentStartWallClock = Date()
+        isRotating = false
+        let newIndex = currentSegmentIndex
+        rotationLock.unlock()
 
-        AppLogger.recording.info("Segment rotated: \(previousIndex) → \(self.currentSegmentIndex)")
+        AppLogger.recording.info("Segment rotated: \(previousIndex) → \(newIndex)")
 
-        // Finalize previous writer in background
+        // Finalize previous writer in background.
         if let previousProxy {
             let segmentIdx = previousIndex
             let logger = AppLogger.recording
+            let wallClock = previousStartWall ?? Date().addingTimeInterval(-segmentDuration)
             Task.detached { [weak self] in
                 do {
                     let url = try await previousProxy.writer.finish()
-                    await self?.saveClipMetadata(fileURL: url, segmentIndex: segmentIdx)
+                    await self?.saveClipMetadata(
+                        fileURL: url,
+                        segmentIndex: segmentIdx,
+                        startWallClock: wallClock
+                    )
                     self?.onSegmentCompleted?(segmentIdx)
                 } catch {
                     logger.error("Failed to finalize segment \(segmentIdx): \(error.localizedDescription)")
+                    self?.onWriterFailure?(error)
                 }
             }
         }
-
-        isRotating = false
     }
 
     private func createWriterProxy(segmentIndex: Int) throws -> WriterProxy {
@@ -170,11 +231,21 @@ final class SegmentManager: @unchecked Sendable {
             codec: settings.codec,
             audioEnabled: audioEnabled
         )
+        // Bubble terminal writer failures up to the engine via
+        // `onWriterFailure`. Captured weakly so a segment being torn down
+        // during a stop doesn't pin the manager.
+        writer.onFailure = { [weak self] error in
+            self?.onWriterFailure?(error)
+        }
 
         return WriterProxy(writer: writer)
     }
 
-    private func saveClipMetadata(fileURL: URL, segmentIndex: Int) async {
+    private func saveClipMetadata(
+        fileURL: URL,
+        segmentIndex: Int,
+        startWallClock: Date
+    ) async {
         guard let modelContainer else { return }
 
         let relativePath = fileURL.path.replacingOccurrences(
@@ -185,17 +256,23 @@ final class SegmentManager: @unchecked Sendable {
         let fileSize = FileSystemManager.fileSize(at: fileURL)
         let settings = AppSettings.shared
 
+        // Real duration = now − start, but never more than the target
+        // segment duration (stop-in-the-middle clips use the actual
+        // elapsed time). A short final segment is valid.
+        let elapsed = Date().timeIntervalSince(startWallClock)
+        let duration = min(max(elapsed, 0), segmentDuration)
+
         let clip = VideoClip(
             fileName: fileURL.lastPathComponent,
             filePath: relativePath,
-            startDate: Date().addingTimeInterval(-segmentDuration),
-            duration: segmentDuration,
+            startDate: startWallClock,
+            duration: duration,
             fileSize: fileSize,
             resolution: settings.resolution,
             frameRate: settings.frameRate,
             codec: settings.codec
         )
-        clip.endDate = Date()
+        clip.endDate = startWallClock.addingTimeInterval(duration)
 
         // Generate thumbnail
         await generateThumbnail(for: fileURL, clip: clip)

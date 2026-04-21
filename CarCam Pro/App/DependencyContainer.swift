@@ -12,6 +12,7 @@ final class DependencyContainer {
     let cameraService: CameraService
     let recordingEngine: RecordingEngine
     let thermalMonitor: ThermalMonitor
+    let batteryMonitor: BatteryMonitor
     let incidentDetector: IncidentDetector
     let locationService: LocationService
     let settings: AppSettings
@@ -24,11 +25,13 @@ final class DependencyContainer {
     init(apiClient: APIClientProtocol = APIClient()) {
         let camera = CameraService()
         let thermal = ThermalMonitor()
+        let battery = BatteryMonitor()
         let incident = IncidentDetector()
         let location = LocationService()
 
         self.cameraService = camera
         self.thermalMonitor = thermal
+        self.batteryMonitor = battery
         self.incidentDetector = incident
         self.locationService = location
         self.recordingEngine = RecordingEngine(cameraService: camera)
@@ -54,6 +57,18 @@ final class DependencyContainer {
             self.handleExternalSettingsChange(changedKeys)
         }
 
+        // Bind the entitlement store to the shared APIClient and boot the
+        // StoreKit listener so renewals / refunds land in real time. Kick
+        // off a server refresh in the background — if the user is signed
+        // in, this promotes their tier from the default FREE before any
+        // paywall gate evaluates.
+        EntitlementStore.shared.bind(api: apiClient)
+        StoreKitManager.shared.bootstrap(api: apiClient)
+        Task {
+            await StoreKitManager.shared.load()
+            await EntitlementStore.shared.refresh()
+        }
+
         // Storage cap enforcement is wired through the shim gate so the
         // SettingsCoordinator can trigger it without holding a ModelContainer.
         StorageEnforcementGate.enforceAction = { @Sendable [weak storage] in
@@ -75,7 +90,10 @@ final class DependencyContainer {
         // Seed the detection subsystem with the persisted preference.
         PoliceDetectionSystem.shared.setEnabled(settings.policeDetectionEnabled)
 
-        // Start long-running services.
+        // Start long-running services. Battery must start BEFORE thermal
+        // attach so the initial tier reflects real device state.
+        batteryMonitor.start()
+        thermalMonitor.attach(batteryMonitor: batteryMonitor)
         thermalMonitor.start()
         Task { @MainActor in
             await locationService.start()

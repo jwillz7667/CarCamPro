@@ -39,6 +39,16 @@ final class RecordingEngine {
         state = .starting
 
         do {
+            // Activate the audio session BEFORE configuring the camera. The
+            // capture session reads the active audio category when
+            // installing its audio output — starting with `.playAndRecord`
+            // already set gets us bluetooth + background capture without a
+            // mid-session reconfigure.
+            let audioEnabled = AppSettings.shared.audioEnabled && !isMuted
+            try AudioSessionManager.shared.activate(allowAudioCapture: audioEnabled)
+            installAudioSessionCallbacksIfNeeded()
+            installCameraInterruptionCallbacksIfNeeded()
+
             // Ensure camera is configured and running
             if !cameraService.isRunning {
                 let config = CameraConfiguration.default
@@ -61,7 +71,7 @@ final class RecordingEngine {
                 sessionDirectory: sessionDir,
                 modelContainer: modelContainer,
                 sessionID: session.id,
-                audioEnabled: settings.audioEnabled && !isMuted
+                audioEnabled: audioEnabled
             )
 
             // Listen for segment completions — enforce storage cap after each rotation
@@ -78,6 +88,20 @@ final class RecordingEngine {
                 }
             }
 
+            // A terminal writer failure (disk full, media-services reset,
+            // asset-writer .failed) stops the session so we don't keep
+            // pretending to record. Surfaces as `.error` state in the UI.
+            manager.onWriterFailure = { [weak self] error in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    AppLogger.recording.error(
+                        "Writer failure — stopping session: \(error.localizedDescription)"
+                    )
+                    self.state = .error(.writerSetupFailed(error.localizedDescription))
+                    try? await self.stopRecording()
+                }
+            }
+
             // Start first segment
             _ = try manager.startFirstSegment()
 
@@ -85,7 +109,7 @@ final class RecordingEngine {
             sampleBufferBridge.segmentManager = manager
             await cameraService.setSampleBufferDelegate(sampleBufferBridge)
 
-            // Save session to SwiftData
+            // Save session to SwiftData (one-time insert at start).
             if let modelContainer {
                 let context = ModelContext(modelContainer)
                 context.insert(session)
@@ -105,12 +129,14 @@ final class RecordingEngine {
 
         } catch {
             state = .error(.writerSetupFailed(error.localizedDescription))
+            AudioSessionManager.shared.deactivate()
             throw error
         }
     }
 
     func stopRecording() async throws {
-        guard state.isRecording else { return }
+        // Allow stopping from .error or .recording; no-op otherwise.
+        guard state.isRecording || state.isError else { return }
 
         state = .stopping
         stopDurationTimer()
@@ -127,21 +153,24 @@ final class RecordingEngine {
             }
         }
 
-        // Update session
+        // Update the already-inserted session in place — don't re-insert;
+        // SwiftData would cascade-orphan the newly-created clips.
         if let session = currentSession, let modelContainer {
             session.endDate = Date()
             session.totalDuration = currentDuration
             session.totalSegments = currentSegment
 
             let context = ModelContext(modelContainer)
-            context.insert(session)
             try? context.save()
+            _ = modelContainer // silence unused-warning in minimal builds
         }
 
         segmentManager = nil
         currentSession = nil
         currentSegment = 0
         currentDuration = 0
+
+        AudioSessionManager.shared.deactivate()
 
         state = .idle
         AppLogger.recording.info("Recording stopped")
@@ -255,6 +284,76 @@ final class RecordingEngine {
         let sdLon = sin(dLon / 2)
         let h = sdLat * sdLat + cos(lat1) * cos(lat2) * sdLon * sdLon
         return 2 * earthR * atan2(sqrt(h), sqrt(1 - h))
+    }
+
+    // MARK: - Interruption plumbing
+
+    private var audioCallbacksInstalled = false
+    private var cameraCallbacksInstalled = false
+
+    private func installAudioSessionCallbacksIfNeeded() {
+        guard !audioCallbacksInstalled else { return }
+        audioCallbacksInstalled = true
+
+        let audio = AudioSessionManager.shared
+        audio.onInterruptionBegan = { [weak self] in
+            AppLogger.recording.notice("Audio interruption began — pausing writers")
+            // We leave the capture session alive but stop feeding buffers
+            // to the writer bridge; the next sample after resume will drop
+            // into the same segment so we get a short silence, not a file
+            // corruption.
+            self?.sampleBufferBridge.segmentManager = nil
+        }
+        audio.onInterruptionEnded = { [weak self] in
+            AppLogger.recording.notice("Audio interruption ended — resuming writers")
+            guard let self, let manager = self.segmentManager else { return }
+            self.sampleBufferBridge.segmentManager = manager
+        }
+        audio.onMediaServicesReset = { [weak self] in
+            AppLogger.recording.error("Audio media services reset — stopping session")
+            Task { @MainActor [weak self] in
+                self?.state = .error(.writerSetupFailed("audio media services reset"))
+                try? await self?.stopRecording()
+            }
+        }
+        audio.onRouteChanged = { reason in
+            // No action needed for most reasons — logged centrally in
+            // AudioSessionManager. If we get `.oldDeviceUnavailable` while
+            // recording (e.g. BT mic dropped), the next segment will
+            // reconfigure the session with whatever mic is available.
+            _ = reason
+        }
+    }
+
+    private func installCameraInterruptionCallbacksIfNeeded() {
+        guard !cameraCallbacksInstalled else { return }
+        cameraCallbacksInstalled = true
+
+        cameraService.onInterruptionBegan = { [weak self] in
+            Task { @MainActor [weak self] in
+                AppLogger.recording.notice("Capture interrupted — pausing writers")
+                self?.sampleBufferBridge.segmentManager = nil
+            }
+        }
+        cameraService.onInterruptionEnded = { [weak self] in
+            Task { @MainActor [weak self] in
+                AppLogger.recording.notice("Capture resumed — reattaching writers")
+                guard let self, let manager = self.segmentManager else { return }
+                self.sampleBufferBridge.segmentManager = manager
+            }
+        }
+        cameraService.onRuntimeError = { [weak self] error in
+            Task { @MainActor [weak self] in
+                AppLogger.recording.error(
+                    "Capture runtime error: \(error?.localizedDescription ?? "nil")"
+                )
+                // The CameraService already attempts restart. If we're
+                // recording, mark an error + stop so the UI can resurface.
+                guard let self, self.state.isRecording else { return }
+                self.state = .error(.writerSetupFailed(error?.localizedDescription ?? "capture runtime error"))
+                try? await self.stopRecording()
+            }
+        }
     }
 
     // MARK: - Private

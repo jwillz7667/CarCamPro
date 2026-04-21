@@ -64,8 +64,8 @@ final class SettingsCoordinator {
         settings.bitrateMultiplier = value
         camera.applyThermalPolicy(
             maxFrameRate: settings.frameRate,
-            bitrateMultiplier: value * thermal.currentTier.bitrateMultiplier,
-            forcedResolutionCeiling: thermal.currentTier.forcedResolutionCeiling
+            bitrateMultiplier: value * thermal.effectiveTier.bitrateMultiplier,
+            forcedResolutionCeiling: thermal.effectiveTier.forcedResolutionCeiling
         )
     }
 
@@ -179,7 +179,7 @@ final class SettingsCoordinator {
         if !enabled {
             recording.applyThermalTier(.nominal)
         } else {
-            recording.applyThermalTier(thermal.currentTier)
+            recording.applyThermalTier(thermal.effectiveTier)
         }
     }
 
@@ -187,7 +187,7 @@ final class SettingsCoordinator {
     /// HUD when recording begins.
     func applyDisplayDimming() {
         guard settings.dimDisplayWhileRecording else { return }
-        let tier = settings.allowThermalThrottling ? thermal.currentTier : .nominal
+        let tier = settings.allowThermalThrottling ? thermal.effectiveTier : .nominal
         UIScreen.main.brightness = tier.brightnessFactor
     }
 

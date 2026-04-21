@@ -20,6 +20,11 @@ enum RecordingState: Equatable, Sendable {
         return false
     }
 
+    var isError: Bool {
+        if case .error = self { return true }
+        return false
+    }
+
     static func canTransition(from: RecordingState, to: RecordingState) -> Bool {
         switch (from, to) {
         case (.idle, .starting): true
@@ -33,6 +38,7 @@ enum RecordingState: Equatable, Sendable {
         case (.stopping, .idle): true
         case (.stopping, .error): true
         case (.error, .idle): true
+        case (.error, .stopping): true
         default: false
         }
     }

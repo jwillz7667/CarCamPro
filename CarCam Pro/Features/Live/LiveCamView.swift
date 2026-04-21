@@ -38,6 +38,17 @@ struct LiveCamView: View {
                 DetectionOverlayView()
                     .ignoresSafeArea()
                 overlay
+                if container.settings.showDetectionDiagnostics {
+                    VStack {
+                        Spacer()
+                        DetectionDiagnosticsHUD()
+                            .padding(.horizontal, CCTheme.Space.lg)
+                            .padding(.bottom, 132)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+                }
             }
         }
         .statusBarHidden()
@@ -69,19 +80,47 @@ struct LiveCamView: View {
     }
 
     private var topBar: some View {
-        HStack(alignment: .top) {
-            if container.recordingEngine.state.isRecording {
-                recPill
-                    .transition(.scale.combined(with: .opacity))
+        VStack(spacing: 8) {
+            HStack(alignment: .top) {
+                if container.recordingEngine.state.isRecording {
+                    recPill
+                        .transition(.scale.combined(with: .opacity))
+                }
+                Spacer()
+                if let speed = currentSpeedMPH {
+                    speedPill(speed)
+                        .transition(.scale.combined(with: .opacity))
+                }
             }
-            Spacer()
-            if let speed = currentSpeedMPH {
-                speedPill(speed)
-                    .transition(.scale.combined(with: .opacity))
+
+            // Thermal + battery HUD is visible whenever the pipeline is
+            // throttling (tier >= fair) or the user has the diagnostics
+            // overlay toggled on. Outside those, it stays hidden so the
+            // LIVE view is maximally clean.
+            if shouldShowThermalHUD {
+                HStack {
+                    ThermalBatteryHUD(
+                        thermal: container.thermalMonitor,
+                        battery: container.batteryMonitor
+                    )
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    Spacer()
+                }
             }
         }
         .animation(.snappy, value: container.recordingEngine.state.isRecording)
         .animation(.snappy, value: currentSpeedMPH)
+        .animation(.snappy, value: shouldShowThermalHUD)
+    }
+
+    /// Visible any time:
+    ///   • thermal pressure is actually limiting quality (`.fair`+), OR
+    ///   • battery pressure is limiting quality, OR
+    ///   • the user explicitly enabled the diagnostics overlay.
+    private var shouldShowThermalHUD: Bool {
+        if container.settings.showDetectionDiagnostics { return true }
+        if container.thermalMonitor.effectiveTier != .nominal { return true }
+        return false
     }
 
     private var recPill: some View {

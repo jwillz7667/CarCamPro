@@ -20,6 +20,10 @@ final class VehicleDetector: @unchecked Sendable {
     private let requestQueue = DispatchQueue(label: "res.carcam-pro.detection.vehicle",
                                              qos: .userInitiated)
 
+    /// Whether the Core ML model was bundled + loaded at init time. Read by
+    /// the telemetry layer so QA/HUD can surface "model missing" at a glance.
+    var isModelLoaded: Bool { visionModel != nil }
+
     init() {
         loadModel()
     }

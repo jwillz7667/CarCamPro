@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import AVKit
+import AVFoundation
 import OSLog
 
 /// Trip detail / incident playback.
@@ -8,12 +9,19 @@ import OSLog
 /// Presented as a sheet from the Trips list. Uses NavigationStack + a
 /// standard iOS close button. The video lives in a rounded-corner container
 /// and the telemetry + stats are rendered with native Labels / GroupBoxes.
+///
+/// Playback stitches every segment of the session into one continuous
+/// timeline via `SessionPlaybackComposition`, so the scrubber spans the
+/// whole trip instead of a single 60-second clip. A thumbnail-strip below
+/// the player lets the user jump to any segment, with locked incidents
+/// rendered in red so they're obvious at a glance.
 struct IncidentPlaybackView: View {
     let session: RecordingSession
 
     @Environment(\.dismiss) private var dismiss
     @State private var player: AVPlayer?
-    @State private var selectedClip: VideoClip?
+    @State private var composition: SessionPlaybackComposition?
+    @State private var activeCue: SessionPlaybackComposition.ClipCue?
     @State private var showShare = false
 
     private var clips: [VideoClip] {
@@ -30,6 +38,7 @@ struct IncidentPlaybackView: View {
                 VStack(spacing: CCTheme.Space.lg) {
                     headerCard
                     videoCard
+                    clipStrip
                     telemetryCard
                     statsGrid
                     actionsRow
@@ -47,10 +56,10 @@ struct IncidentPlaybackView: View {
                 }
             }
         }
-        .onAppear { loadFirstClip() }
+        .task { await buildComposition() }
         .onDisappear { player?.pause() }
         .sheet(isPresented: $showShare) {
-            if let url = selectedClip?.fileURL {
+            if let url = headlineClip?.fileURL {
                 ShareSheet(items: [url])
             }
         }
@@ -231,14 +240,104 @@ struct IncidentPlaybackView: View {
         }
     }
 
+    // MARK: - Clip strip
+
+    @ViewBuilder
+    private var clipStrip: some View {
+        if let comp = composition, comp.cues.count > 1 {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: CCTheme.Space.sm) {
+                    ForEach(comp.cues) { cue in
+                        Button {
+                            seek(to: cue)
+                        } label: {
+                            clipCueTile(cue: cue,
+                                        isActive: activeCue?.id == cue.id)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 2)
+            }
+            .frame(height: 64)
+        }
+    }
+
+    private func clipCueTile(
+        cue: SessionPlaybackComposition.ClipCue,
+        isActive: Bool
+    ) -> some View {
+        ZStack(alignment: .topTrailing) {
+            // Thumbnail-or-placeholder base.
+            Group {
+                if let url = cue.thumbnailURL,
+                   let data = try? Data(contentsOf: url),
+                   let image = UIImage(data: data) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } else {
+                    Color.black
+                }
+            }
+            .frame(width: 96, height: 54)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(
+                        isActive ? CCTheme.accent : Color.white.opacity(0.15),
+                        lineWidth: isActive ? 2 : 0.5
+                    )
+            )
+
+            if cue.isProtected {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(3)
+                    .background(Circle().fill(CCTheme.red))
+                    .padding(4)
+            }
+        }
+    }
+
     // MARK: - Helpers
 
-    private func loadFirstClip() {
-        guard let clip = headlineClip else { return }
-        selectedClip = clip
-        let url = clip.fileURL
-        guard FileManager.default.fileExists(atPath: url.path) else { return }
-        player = AVPlayer(url: url)
+    private func buildComposition() async {
+        guard composition == nil else { return }
+        guard let built = await SessionPlaybackComposition.build(clips: clips) else {
+            // No playable clips on disk — leave `player` nil so the empty
+            // placeholder renders.
+            return
+        }
+        composition = built
+        activeCue = built.cues.first(where: { $0.isProtected }) ?? built.cues.first
+
+        let newPlayer = AVPlayer(playerItem: built.playerItem)
+        player = newPlayer
+
+        // If a locked clip exists, seek the scrubber to its start on load
+        // so the user lands directly on the incident.
+        if let cue = activeCue, cue.startOffset > 0 {
+            await newPlayer.seek(
+                to: CMTime(seconds: cue.startOffset, preferredTimescale: 600),
+                toleranceBefore: .zero,
+                toleranceAfter: .positiveInfinity
+            )
+        }
+    }
+
+    private func seek(to cue: SessionPlaybackComposition.ClipCue) {
+        guard let player else { return }
+        activeCue = cue
+        Task {
+            await player.seek(
+                to: CMTime(seconds: cue.startOffset, preferredTimescale: 600),
+                toleranceBefore: .zero,
+                toleranceAfter: .positiveInfinity
+            )
+            player.play()
+        }
     }
 
     private func generateReport() {

@@ -43,7 +43,7 @@ public final class CloudSettingsStore: @unchecked Sendable {
         "watermarkEnabled", "watermarkText", "autoStartOnLaunch",
         "dimDisplayWhileRecording", "allowThermalThrottling",
         "hapticsEnabled", "policeDetectionEnabled",
-        "detectionAudioEnabled",
+        "detectionAudioEnabled", "showDetectionDiagnostics",
     ]
 
     nonisolated public static let shared = CloudSettingsStore()

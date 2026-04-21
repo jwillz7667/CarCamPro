@@ -1,0 +1,134 @@
+{
+  "identifier": "CarCam Pro StoreKit Configuration",
+  "nonRenewingSubscriptions": [],
+  "products": [],
+  "settings": {
+    "_askToBuyEnabled": false,
+    "_billingIssuesEnabled": false,
+    "_disableDialogs": false,
+    "_failTransactionsEnabled": false,
+    "_locale": "en_US",
+    "_storefront": "USA",
+    "_storeKitErrors": [],
+    "_renewalRate": 1
+  },
+  "subscriptionGroups": [
+    {
+      "id": "21A1B0F7",
+      "localizations": [
+        {
+          "description": "CarCam Pro subscription group",
+          "displayName": "CarCam Pro",
+          "locale": "en_US"
+        }
+      ],
+      "name": "CarCam Pro",
+      "subscriptions": [
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "4.99",
+          "familyShareable": false,
+          "groupNumber": 2,
+          "internalID": "A100",
+          "introductoryOffer": {
+            "internalID": "A100INTRO",
+            "paymentMode": "free",
+            "subscriptionPeriod": "P7D"
+          },
+          "localizations": [
+            {
+              "description": "CarCam Pro — 1080p capture, 10 GB cloud, background recording, incident reports.",
+              "displayName": "CarCam Pro (Monthly)",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "pro.carcam.pro.monthly",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "Pro Monthly",
+          "subscriptionGroupID": "21A1B0F7",
+          "type": "RecurringSubscription"
+        },
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "49.99",
+          "familyShareable": false,
+          "groupNumber": 2,
+          "internalID": "A101",
+          "introductoryOffer": {
+            "internalID": "A101INTRO",
+            "paymentMode": "free",
+            "subscriptionPeriod": "P7D"
+          },
+          "localizations": [
+            {
+              "description": "CarCam Pro — save 17 % on the yearly plan.",
+              "displayName": "CarCam Pro (Yearly)",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "pro.carcam.pro.yearly",
+          "recurringSubscriptionPeriod": "P1Y",
+          "referenceName": "Pro Yearly",
+          "subscriptionGroupID": "21A1B0F7",
+          "type": "RecurringSubscription"
+        },
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "9.99",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "A200",
+          "introductoryOffer": {
+            "internalID": "A200INTRO",
+            "paymentMode": "free",
+            "subscriptionPeriod": "P7D"
+          },
+          "localizations": [
+            {
+              "description": "CarCam Premium — 4K capture, unlimited cloud, 60s incident buffer, priority support.",
+              "displayName": "CarCam Premium (Monthly)",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "pro.carcam.premium.monthly",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "Premium Monthly",
+          "subscriptionGroupID": "21A1B0F7",
+          "type": "RecurringSubscription"
+        },
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "99.99",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "A201",
+          "introductoryOffer": {
+            "internalID": "A201INTRO",
+            "paymentMode": "free",
+            "subscriptionPeriod": "P7D"
+          },
+          "localizations": [
+            {
+              "description": "CarCam Premium — save 17 % on the yearly plan.",
+              "displayName": "CarCam Premium (Yearly)",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "pro.carcam.premium.yearly",
+          "recurringSubscriptionPeriod": "P1Y",
+          "referenceName": "Premium Yearly",
+          "subscriptionGroupID": "21A1B0F7",
+          "type": "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version": {
+    "major": 4,
+    "minor": 0
+  }
+}

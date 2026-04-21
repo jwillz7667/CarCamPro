@@ -9,6 +9,20 @@ import OSLog
 /// via `processFrame(sampleBuffer:)`. The coordinator throttles itself via
 /// the thermal gate, drops frames if still busy, and publishes per-vehicle
 /// assessments into `AlertManager`.
+///
+/// Robustness guarantees:
+///   • **Bounded concurrency.** At most one inference pass runs at a time;
+///     additional frames are dropped (never queued) so the pipeline can
+///     never accumulate backlog.
+///   • **Self-recovering.** If the in-flight detached task ever fails to
+///     release the busy flag (unexpected trap, cancellation, …) a watchdog
+///     clears it automatically after `busyWatchdogSeconds` so the pipeline
+///     resumes instead of silently locking up.
+///   • **Observable.** Every interesting event is reported to
+///     `DetectionTelemetry` — frame counts, drop reasons, per-frame
+///     inference latency, model-load state, last-alert timestamp — so a
+///     HUD or test can verify the pipeline is alive without waiting for a
+///     real cruiser to show up on camera.
 final class PoliceDetectionSystem: @unchecked Sendable {
     static let shared = PoliceDetectionSystem()
 
@@ -19,9 +33,18 @@ final class PoliceDetectionSystem: @unchecked Sendable {
     private let tracker = VehicleTracker()
     private let fusion = DetectionFusion()
     private let thermalGate = DetectionThermalGate.shared
+    private let telemetry = DetectionTelemetry.shared
 
+    // Busy-state guard. Uses a timestamp so a stale flag (caused by an
+    // unexpected task death) is detectable + auto-recovered.
     private var isProcessing = false
-    private let isProcessingLock = NSLock()
+    private var processingStartedAt: CFAbsoluteTime = 0
+    private let busyLock = NSLock()
+
+    /// Maximum inference pass duration before the watchdog force-releases
+    /// the busy flag. Real inference (4 detectors in parallel + Vision
+    /// overhead) completes well under 1 s on A15+, so 3 s is generous.
+    private let busyWatchdogSeconds: CFAbsoluteTime = 3.0
 
     /// Enabled flag — flipped by `SettingsCoordinator` when the user toggles
     /// the detection setting. When false, `processFrame` short-circuits.
@@ -31,32 +54,48 @@ final class PoliceDetectionSystem: @unchecked Sendable {
     /// bounded. Extra vehicles are skipped (not queued).
     private let maxVehiclesPerFrame = 4
 
-    private init() {}
+    private init() {
+        telemetry.recordModelLoadState(
+            vehicle: vehicleDetector.isModelLoaded,
+            roof: roofAnalyzer.isModelLoaded,
+            fleetFeature: fleetDetector.isModelLoaded
+        )
+    }
 
     // MARK: - Lifecycle
 
     func setEnabled(_ enabled: Bool) {
         isEnabled = enabled
         if !enabled {
-            Task { @MainActor in AlertManager.shared.reset() }
+            Task { @MainActor in
+                AlertManager.shared.reset()
+                self.telemetry.reset()
+            }
         }
     }
 
     /// Call from the camera's sample-buffer delegate.
     func processFrame(sampleBuffer: CMSampleBuffer) {
         guard isEnabled else { return }
-        guard thermalGate.shouldProcessThisFrame() else { return }
 
-        // Drop frames if still busy — never queue backlog.
-        isProcessingLock.lock()
-        if isProcessing {
-            isProcessingLock.unlock()
+        telemetry.recordFrameReceived()
+
+        guard thermalGate.shouldProcessThisFrame() else {
+            telemetry.recordFrameDroppedThermal()
             return
         }
-        isProcessing = true
-        isProcessingLock.unlock()
+
+        // Busy guard + watchdog: if the flag is set but the in-flight pass
+        // has been running longer than `busyWatchdogSeconds`, force-clear it.
+        // This recovers from the extremely rare case where a detached task
+        // dies before hitting its `defer { markDone() }`.
+        if !tryAcquireBusy() {
+            telemetry.recordFrameDroppedBusy()
+            return
+        }
 
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+            telemetry.recordError("sample buffer had no image buffer")
             markDone()
             return
         }
@@ -67,6 +106,7 @@ final class PoliceDetectionSystem: @unchecked Sendable {
         )
 
         let sendablePixelBuffer = SendablePixelBuffer(value: pixelBuffer)
+        let startedAt = CFAbsoluteTimeGetCurrent()
 
         Task.detached(priority: .userInitiated) { [weak self] in
             guard let self else { return }
@@ -138,13 +178,46 @@ final class PoliceDetectionSystem: @unchecked Sendable {
             }
 
             AlertManager.shared.publish(assessments: assessments)
+
+            let latency = CFAbsoluteTimeGetCurrent() - startedAt
+            self.telemetry.recordFrameProcessed(
+                latencySeconds: Double(latency),
+                activeTracks: assessments.count,
+                hadVehicles: !assessments.isEmpty
+            )
         }
     }
 
+    // MARK: - Busy guard + watchdog
+
+    /// Returns `true` iff the caller now holds the busy flag. If a prior
+    /// holder has been stuck beyond `busyWatchdogSeconds`, force-release +
+    /// log a diagnostic, then grant the flag to the new caller.
+    private func tryAcquireBusy() -> Bool {
+        busyLock.lock()
+        defer { busyLock.unlock() }
+        if isProcessing {
+            let elapsed = CFAbsoluteTimeGetCurrent() - processingStartedAt
+            if elapsed > busyWatchdogSeconds {
+                AppLogger.detection.error(
+                    "Detection pipeline watchdog: busy flag stuck for \(String(format: "%.2f", elapsed))s — force-releasing"
+                )
+                telemetry.recordError("pipeline watchdog recovered a stuck busy flag")
+                // fall through to re-acquire.
+            } else {
+                return false
+            }
+        }
+        isProcessing = true
+        processingStartedAt = CFAbsoluteTimeGetCurrent()
+        return true
+    }
+
     private func markDone() {
-        isProcessingLock.lock()
+        busyLock.lock()
         isProcessing = false
-        isProcessingLock.unlock()
+        processingStartedAt = 0
+        busyLock.unlock()
     }
 }
 

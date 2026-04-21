@@ -9,7 +9,7 @@ struct OnboardingWelcomeView: View {
     let onContinue: () -> Void
 
     var body: some View {
-        OnboardingFrame(step: 1) {
+        OnboardingFrame(step: 1, total: 6) {
             heroImage
                 .padding(.vertical, CCTheme.Space.md)
 

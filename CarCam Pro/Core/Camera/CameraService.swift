@@ -14,6 +14,24 @@ final class CameraService: NSObject, CameraServiceProtocol, @unchecked Sendable 
 
     private(set) var isRunning = false
 
+    // MARK: - Interruption handling
+
+    /// Caller-supplied hook fired when the capture session is interrupted
+    /// (phone call, PiP, another camera-using app foregrounding, etc.).
+    /// Recording engines should pause writers but keep the session warm.
+    nonisolated(unsafe) var onInterruptionBegan: (@Sendable () -> Void)?
+    /// Fires when the interruption ends. Engines should cut a fresh
+    /// segment if one was rotating, or resume writing to the current one.
+    nonisolated(unsafe) var onInterruptionEnded: (@Sendable () -> Void)?
+    /// Fires on `runtimeErrorNotification`. Unlike interruptions, this
+    /// usually requires a full session restart. We attempt an automatic
+    /// restart via `cameraQueue.async { captureSession.startRunning() }`
+    /// but also notify the caller so it can resurface the session errored
+    /// state in the UI.
+    nonisolated(unsafe) var onRuntimeError: (@Sendable (Error?) -> Void)?
+
+    private var interruptionObservers: [NSObjectProtocol] = []
+
     // MARK: - Configuration
 
     func configure(_ config: CameraConfiguration) async throws {
@@ -129,6 +147,8 @@ final class CameraService: NSObject, CameraServiceProtocol, @unchecked Sendable 
             throw CameraError.notAuthorized
         }
 
+        installInterruptionObserversIfNeeded()
+
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             cameraQueue.async { [self] in
                 if !captureSession.isRunning {
@@ -139,6 +159,80 @@ final class CameraService: NSObject, CameraServiceProtocol, @unchecked Sendable 
                 continuation.resume()
             }
         }
+    }
+
+    // MARK: - Capture-session interruption observers
+
+    /// Install once per process — the observers live for the lifetime of the
+    /// `CameraService` instance (which is process-scoped via the
+    /// `DependencyContainer`).
+    private func installInterruptionObserversIfNeeded() {
+        guard interruptionObservers.isEmpty else { return }
+        let center = NotificationCenter.default
+
+        // 1. AVCaptureSessionWasInterrupted — phone call, PiP, another app
+        //    took the camera, resource constraints, etc.
+        interruptionObservers.append(center.addObserver(
+            forName: AVCaptureSession.wasInterruptedNotification,
+            object: captureSession,
+            queue: nil
+        ) { [weak self] note in
+            self?.handleInterruptionBegan(note)
+        })
+
+        // 2. AVCaptureSessionInterruptionEnded — paired with the above.
+        interruptionObservers.append(center.addObserver(
+            forName: AVCaptureSession.interruptionEndedNotification,
+            object: captureSession,
+            queue: nil
+        ) { [weak self] _ in
+            self?.handleInterruptionEnded()
+        })
+
+        // 3. AVCaptureSessionRuntimeError — mic lost, media services dead, ...
+        interruptionObservers.append(center.addObserver(
+            forName: AVCaptureSession.runtimeErrorNotification,
+            object: captureSession,
+            queue: nil
+        ) { [weak self] note in
+            self?.handleRuntimeError(note)
+        })
+    }
+
+    private func handleInterruptionBegan(_ note: Notification) {
+        let reasonValue = (note.userInfo?[AVCaptureSessionInterruptionReasonKey] as? NSNumber)?.intValue ?? -1
+        AppLogger.camera.notice("Capture session interrupted (reason=\(reasonValue))")
+        onInterruptionBegan?()
+    }
+
+    private func handleInterruptionEnded() {
+        AppLogger.camera.notice("Capture session interruption ended")
+        cameraQueue.async { [weak self] in
+            guard let self else { return }
+            if !self.captureSession.isRunning {
+                self.captureSession.startRunning()
+                self.isRunning = self.captureSession.isRunning
+            }
+        }
+        onInterruptionEnded?()
+    }
+
+    private func handleRuntimeError(_ note: Notification) {
+        let error = note.userInfo?[AVCaptureSessionErrorKey] as? Error
+        AppLogger.camera.error(
+            "Capture session runtime error: \(error?.localizedDescription ?? "nil")"
+        )
+        // Attempt an automatic restart. The session object itself is still
+        // valid after a runtime error — only `startRunning()` needs to be
+        // re-invoked. If the underlying issue is persistent we'll bounce
+        // here repeatedly, which is logged each time; the engine surfaces
+        // the error in state so the UI can show a "camera lost" banner.
+        cameraQueue.async { [weak self] in
+            guard let self else { return }
+            self.captureSession.startRunning()
+            self.isRunning = self.captureSession.isRunning
+        }
+        onRuntimeError?(error)
     }
 
     func stopCapture() async {
