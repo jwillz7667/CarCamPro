@@ -33,7 +33,7 @@ export const maybeStartOtel = async (params: { mode: 'api' | 'worker' }): Promis
   const { OTLPTraceExporter } = await import(
     '@opentelemetry/exporter-trace-otlp-http'
   );
-  const { resourceFromAttributes } = await import('@opentelemetry/resources');
+  const { Resource } = await import('@opentelemetry/resources');
   const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = await import(
     '@opentelemetry/semantic-conventions'
   );
@@ -46,7 +46,7 @@ export const maybeStartOtel = async (params: { mode: 'api' | 'worker' }): Promis
   });
 
   const sdk = new NodeSDK({
-    resource: resourceFromAttributes({
+    resource: new Resource({
       [ATTR_SERVICE_NAME]: env.OTEL_SERVICE_NAME,
       [ATTR_SERVICE_VERSION]: process.env['npm_package_version'] ?? '0.0.0',
       'deployment.environment': env.NODE_ENV,

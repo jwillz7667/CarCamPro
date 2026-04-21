@@ -5,12 +5,20 @@ import { newId } from '../../lib/ids.js';
 import type { JWSRenewalInfoDecodedPayload, JWSTransactionDecodedPayload } from './apple.js';
 
 /**
- * Map an App Store product id → our internal subscription tier. The product
- * identifiers here must match what's configured in App Store Connect.
+ * Map an App Store product id → our internal subscription tier.
+ *
+ * App Store product IDs for this app follow the convention
+ *   `com.carcampro.sub.{tier}.{period}`   e.g. `com.carcampro.sub.pro.monthly`
+ *
+ * We match on the exact tier segment (surrounded by dots) rather than
+ * `includes` — otherwise `foo.product.bar` would false-positive on "pro".
+ * Unknown / legacy SKUs fall through to FREE, which the caller treats as a
+ * "not entitled" state.
  */
 export const productIdToTier = (productId: string): SubscriptionTier => {
-  if (productId.includes('premium')) return 'PREMIUM';
-  if (productId.includes('pro')) return 'PRO';
+  const segments = productId.toLowerCase().split('.');
+  if (segments.includes('premium')) return 'PREMIUM';
+  if (segments.includes('pro')) return 'PRO';
   return 'FREE';
 };
 
@@ -74,9 +82,9 @@ export class SubscriptionsService {
   async apply(params: {
     userId: string;
     tx: JWSTransactionDecodedPayload;
-    renewal?: JWSRenewalInfoDecodedPayload;
-    notificationType?: string;
-    notificationSubtype?: string;
+    renewal?: JWSRenewalInfoDecodedPayload | undefined;
+    notificationType?: string | undefined;
+    notificationSubtype?: string | undefined;
     signedPayload: string;
   }) {
     const tier = productIdToTier(params.tx.productId);

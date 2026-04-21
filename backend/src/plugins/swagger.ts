@@ -85,7 +85,16 @@ export default fp(
 
     // Machine-readable spec route — convenience alias to Swagger's internal
     // `/documentation/json`. Keeps integrations pinned to a stable path.
-    app.get('/openapi.json', { schema: { hide: true } }, async () => app.swagger());
+    //
+    // We stringify manually with a BigInt → string replacer because a few
+    // Zod schemas use `z.coerce.bigint()` (e.g. clip sizeBytes) and those
+    // flow into the generated JSON Schema with literal BigInt defaults —
+    // `JSON.stringify` rejects BigInt by default and the handler would 500.
+    app.get('/openapi.json', { schema: { hide: true } }, async (_req, reply) => {
+      const spec = app.swagger();
+      const body = JSON.stringify(spec, (_k, v) => (typeof v === 'bigint' ? v.toString() : v));
+      return reply.type('application/json').send(body);
+    });
   },
   { name: 'swagger' },
 );

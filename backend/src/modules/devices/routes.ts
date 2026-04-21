@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { Errors } from '../../lib/errors.js';
 import { newId } from '../../lib/ids.js';
+import { stripUndefined } from '../../lib/objects.js';
 
 /**
  * Device routes — register / update / deregister push tokens.
@@ -57,15 +58,15 @@ export const devicesRoutes = async (app: FastifyInstance) => {
           appBuild: request.body.appBuild ?? null,
           apnsToken: request.body.apnsToken ?? null,
         },
-        update: {
+        update: stripUndefined({
           name: request.body.name,
-          model: request.body.model ?? undefined,
-          osVersion: request.body.osVersion ?? undefined,
-          appVersion: request.body.appVersion ?? undefined,
-          appBuild: request.body.appBuild ?? undefined,
-          apnsToken: request.body.apnsToken ?? undefined,
+          model: request.body.model,
+          osVersion: request.body.osVersion,
+          appVersion: request.body.appVersion,
+          appBuild: request.body.appBuild,
+          apnsToken: request.body.apnsToken,
           lastSeenAt: new Date(),
-        },
+        }),
       });
       return {
         id: device.id,
@@ -101,7 +102,7 @@ export const devicesRoutes = async (app: FastifyInstance) => {
       if (existing.userId !== request.auth.userId) throw Errors.forbidden();
       const device = await app.prisma.device.update({
         where: { id: request.params.id },
-        data: { ...request.body, lastSeenAt: new Date() },
+        data: stripUndefined({ ...request.body, lastSeenAt: new Date() }),
       });
       return {
         id: device.id,

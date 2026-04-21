@@ -27,16 +27,18 @@ const ENV_HOST: Record<'Sandbox' | 'Production', string> = {
 
 export interface RefundHistoryRecord {
   transactionId: string;
-  revocationDate?: number;
-  revocationReason?: number;
-  refundReason?: string;
+  revocationDate?: number | undefined;
+  revocationReason?: number | undefined;
+  refundReason?: string | undefined;
   productId: string;
   signedPayload: string;
 }
 
+type AssaPrivateKey = Awaited<ReturnType<typeof jose.importPKCS8>>;
+
 export class AppleAssaClient {
   private cachedToken: { jwt: string; expiresAt: number } | null = null;
-  private privateKey: CryptoKey | null = null;
+  private privateKey: AssaPrivateKey | null = null;
 
   private requireEnv() {
     if (!env.APPLE_ASSA_KEY_ID || !env.APPLE_ASSA_ISSUER_ID || !env.APPLE_ASSA_PRIVATE_KEY) {
@@ -86,11 +88,11 @@ export class AppleAssaClient {
       try {
         const claims = jose.decodeJwt(signedPayload) as Record<string, unknown>;
         records.push({
-          transactionId: String(claims.transactionId ?? ''),
-          revocationDate: numOrUndef(claims.revocationDate),
-          revocationReason: numOrUndef(claims.revocationReason),
-          refundReason: strOrUndef(claims.refundReason),
-          productId: String(claims.productId ?? ''),
+          transactionId: String(claims['transactionId'] ?? ''),
+          revocationDate: numOrUndef(claims['revocationDate']),
+          revocationReason: numOrUndef(claims['revocationReason']),
+          refundReason: strOrUndef(claims['refundReason']),
+          productId: String(claims['productId'] ?? ''),
           signedPayload,
         });
       } catch {

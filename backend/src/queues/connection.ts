@@ -1,4 +1,4 @@
-import IORedis, { type RedisOptions } from 'ioredis';
+import { Redis, type RedisOptions } from 'ioredis';
 
 import { env } from '../config/env.js';
 
@@ -13,8 +13,8 @@ import { env } from '../config/env.js';
  * Both processes safely share the same Redis instance — BullMQ namespaces its
  * keys under `bull:<queue-name>:*`.
  */
-export const createQueueConnection = (overrides: Partial<RedisOptions> = {}): IORedis => {
-  const client = new IORedis(env.REDIS_URL, {
+export const createQueueConnection = (overrides: Partial<RedisOptions> = {}): Redis => {
+  const client = new Redis(env.REDIS_URL, {
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
     lazyConnect: false,

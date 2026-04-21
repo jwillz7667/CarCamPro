@@ -1,5 +1,5 @@
 import type { PrismaClient, Session, SubscriptionTier } from '@prisma/client';
-import type Redis from 'ioredis';
+import type { Redis } from 'ioredis';
 
 import { env } from '../../config/env.js';
 import { constantTimeEqual, randomToken, sha256 } from '../../lib/crypto.js';
@@ -50,9 +50,9 @@ export class AuthService {
    */
   async createSession(params: {
     userId: string;
-    deviceId?: string;
-    userAgent?: string;
-    ipAddress?: string;
+    deviceId?: string | undefined;
+    userAgent?: string | undefined;
+    ipAddress?: string | undefined;
     tier: SubscriptionTier;
   }): Promise<CreatedSession> {
     const refreshToken = randomToken(32);

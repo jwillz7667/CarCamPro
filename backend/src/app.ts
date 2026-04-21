@@ -1,13 +1,23 @@
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import sensible from '@fastify/sensible';
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify from 'fastify';
+import type { FastifyBaseLogger, FastifyInstance, RawReplyDefaultExpression, RawRequestDefaultExpression, RawServerDefault } from 'fastify';
 import {
-  ZodTypeProvider,
+  type ZodTypeProvider,
   serializerCompiler,
   validatorCompiler,
 } from 'fastify-type-provider-zod';
 import { nanoid } from 'nanoid';
+
+/** Concrete Fastify instance type after attaching the Zod type provider. */
+export type CarCamApp = FastifyInstance<
+  RawServerDefault,
+  RawRequestDefaultExpression,
+  RawReplyDefaultExpression,
+  FastifyBaseLogger,
+  ZodTypeProvider
+>;
 
 import { env, isProd } from './config/env.js';
 import { logger } from './config/logger.js';
@@ -35,9 +45,9 @@ import { usersRoutes } from './modules/users/routes.js';
  * listening. Split from `server.ts` so tests can spin up the app without
  * binding a port.
  */
-export const buildApp = async (): Promise<FastifyInstance> => {
+export const buildApp = async (): Promise<CarCamApp> => {
   const app = Fastify({
-    logger,
+    loggerInstance: logger,
     disableRequestLogging: false,
     trustProxy: env.TRUST_PROXY,
     requestIdHeader: 'x-request-id',
@@ -50,15 +60,16 @@ export const buildApp = async (): Promise<FastifyInstance> => {
         allErrors: !isProd,
       },
     },
-  }).withTypeProvider<ZodTypeProvider>();
+  }).withTypeProvider<ZodTypeProvider>() as unknown as CarCamApp;
 
   // Zod ↔ JSON schema compilers.
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
 
-  // Security + plumbing plugins first.
+  // Security + plumbing plugins first. In dev we disable the default CSP
+  // since the Swagger UI is served inline; prod gets helmet's hardened default.
   await app.register(helmet, {
-    contentSecurityPolicy: isProd ? undefined : false,
+    ...(isProd ? {} : { contentSecurityPolicy: false }),
     crossOriginEmbedderPolicy: false,
   });
 
@@ -127,22 +138,24 @@ export const buildApp = async (): Promise<FastifyInstance> => {
       });
     }
 
-    if ((err as { code?: string }).code === 'FST_ERR_VALIDATION') {
+    const maybeValidation = err as { code?: string; validation?: unknown; message?: string };
+    if (maybeValidation.code === 'FST_ERR_VALIDATION') {
       return reply.status(400).send({
         error: {
           code: 'BAD_REQUEST',
           message: 'Request validation failed',
-          details: err.validation,
+          details: maybeValidation.validation,
         },
         requestId,
       });
     }
 
     request.log.error({ err }, 'unhandled error');
+    const message = err instanceof Error ? err.message : 'Internal server error';
     return reply.status(500).send({
       error: {
         code: 'INTERNAL',
-        message: isProd ? 'Internal server error' : err.message,
+        message: isProd ? 'Internal server error' : message,
       },
       requestId,
     });

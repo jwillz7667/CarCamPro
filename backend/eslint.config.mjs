@@ -29,6 +29,7 @@ export default [
         TextEncoder: 'readonly',
         TextDecoder: 'readonly',
         fetch: 'readonly',
+        PDFKit: 'readonly',
       },
     },
     plugins: { '@typescript-eslint': tsPlugin },

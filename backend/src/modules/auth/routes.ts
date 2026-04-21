@@ -3,6 +3,7 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 
 import { newId } from '../../lib/ids.js';
+import { stripUndefined } from '../../lib/objects.js';
 
 import { verifyAppleIdentityToken } from './apple.js';
 import { AuthService } from './service.js';
@@ -69,12 +70,12 @@ export const authRoutes = async (app: FastifyInstance) => {
           emailVerifiedAt: claims.emailVerified ? new Date() : null,
           displayName: body.displayName ?? null,
         },
-        update: {
-          email: claims.email ?? undefined,
+        update: stripUndefined({
+          email: claims.email,
           emailVerifiedAt: claims.emailVerified ? new Date() : undefined,
-          displayName: body.displayName ?? undefined,
+          displayName: body.displayName,
           lastActiveAt: new Date(),
-        },
+        }),
       });
 
       // Upsert device (optional — native clients always pass one).
@@ -90,12 +91,12 @@ export const authRoutes = async (app: FastifyInstance) => {
             osVersion: body.osVersion ?? null,
             appVersion: body.appVersion ?? null,
           },
-          update: {
+          update: stripUndefined({
             lastSeenAt: new Date(),
-            name: body.deviceName ?? undefined,
-            osVersion: body.osVersion ?? undefined,
-            appVersion: body.appVersion ?? undefined,
-          },
+            name: body.deviceName,
+            osVersion: body.osVersion,
+            appVersion: body.appVersion,
+          }),
         });
         deviceId = body.deviceId;
       }

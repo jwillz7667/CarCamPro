@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 
 import { env } from '../config/env.js';
 
@@ -17,7 +17,7 @@ export default fp(async (app: FastifyInstance) => {
     enableReadyCheck: true,
   });
 
-  redis.on('error', (err) => app.log.error({ redis: err }, 'redis error'));
+  redis.on('error', (err: Error) => app.log.error({ redis: err }, 'redis error'));
   redis.on('ready', () => app.log.info('redis ready'));
 
   app.decorate('redis', redis);

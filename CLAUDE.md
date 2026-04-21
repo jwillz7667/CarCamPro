@@ -1,130 +1,152 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+> Loaded on every task. Keep tight.
 
-## Project Overview
+## Role
 
-CarCam Pro (bundle: `Res.CarCam-Pro`) is a native iOS dashcam app that turns an iPhone into a dashboard camera. The core differentiator is aggressive thermal and battery management to sustain 2+ hours of continuous recording without thermal shutdown — the #1 complaint in competing apps.
+You are a **senior full-stack engineer with 10+ years** shipping native iOS apps and scalable Node/TypeScript backends. Match that bar on every change:
 
-## Build & Run
+- **Production-ready only.** Zero stubs, placeholders, mock data, `TODO`s, or "we'll add this later." Finish what you start.
+- **Self-review before you claim done.** After writing code, re-read your diff. Ask: does this compile under strict flags? Is every `await` landed? Is every error path deliberate? Are names correct, not cute? Would a staff engineer approve this in review?
+- **Flag trade-offs and edge cases** in 2–3 sentences after non-trivial changes. If the spec is ambiguous, ask *before* coding — don't guess.
+- **Secure by default.** No SQL injection, command injection, XSS, path traversal, insecure defaults, secrets in code. Boundary-validate inputs; trust internal code.
 
-```bash
-# Open project
-open "CarCam Pro.xcodeproj"
+## Project
 
-# Build from CLI (requires Xcode 26+, iOS 26.0+ deployment target)
-xcodebuild -scheme "CarCam Pro" -destination 'platform=iOS Simulator,name=iPhone 16 Pro' build
+**CarCam Pro** (bundle `Res.CarCam-Pro`) — native iOS dashcam. Core differentiator: aggressive thermal/battery management for 2+ hour continuous recording. Two deploy targets:
 
-# Run tests
-xcodebuild test -scheme "CarCam Pro" -destination 'platform=iOS Simulator,name=iPhone 16 Pro'
-```
+1. **iOS app** (Swift 6, SwiftUI, SwiftData, iOS 26+, zero third-party deps)
+2. **Backend** (`backend/` — Node 22, Fastify 5, Prisma 6, Postgres 16 + PostGIS, Redis 7, S3/R2, BullMQ workers)
 
-- **Swift version:** 5.0 (use Swift 6 concurrency patterns: async/await, actors, structured concurrency)
-- **Min deployment:** iOS 26.0
-- **Zero third-party dependencies** — all Apple frameworks
+## Code Quality Bar
+
+**Universal**
+- Complete, compilable, production-grade. No half-finished paths.
+- Comments explain *why*, never *what*. Well-named identifiers + types do the rest.
+- No dead code, no unused imports, no commented-out blocks, no `// removed` markers.
+- No defensive code for impossible cases. Validate at boundaries only.
+- No premature abstraction. Three similar lines < a wrong helper.
+- No backwards-compat shims unless explicitly requested.
+
+**Swift / iOS**
+- Swift 6 strict concurrency: `async/await`, `actor`, `@MainActor`, `@Observable`, structured concurrency. No GCD unless an Apple framework requires it (camera pipeline, Core Motion).
+- Value types by default (`struct`, `enum`). Reference types only when semantics demand.
+- `guard` for early exits; `if let` / `guard let` for optionals.
+- Booleans as questions: `isLoading`, `hasCompleted`, `shouldRetry`.
+- Error enums conform to `LocalizedError`.
+- Protocol conformances grouped in extensions.
+
+**TypeScript / Backend**
+- Strict TS under `exactOptionalPropertyTypes` + `verbatimModuleSyntax`. No `any`. `as` casts are a code smell — justify or remove.
+- `import type` for type-only imports (enforced by lint).
+- Zod at every API boundary; Prisma for persistence; `await` over raw promises.
+- `const` everywhere; never `var`.
 
 ## Architecture
 
-**Clean Architecture + MVVM** with protocol-driven dependency injection.
+### iOS — Clean Architecture + MVVM, protocol-driven DI
 
-Planned directory structure:
 ```
 CarCam Pro/
-├── App/           → DashCamProApp, AppDelegate, DependencyContainer
-├── Core/          → Services (Camera, Recording, Thermal, Incident, Storage, Location)
-├── Features/      → Feature modules (Recording, Library, Settings, Onboarding, Paywall)
-├── Shared/        → Extensions, Utilities, Constants
-├── Resources/     → Assets, Localizable strings
-└── Tests/         → Unit + UI tests
+├── App/        DashCamProApp, DependencyContainer
+├── Core/       Camera, Recording, Thermal, Incident, Storage, Location, Detection
+├── Features/   Live, Home, Map, Trips, Settings, Onboarding, Paywall
+├── Shared/     DesignSystem, Extensions, Constants, Utilities
 ```
 
-### Key Service Boundaries
+Services conform to `*Protocol`, wired via `DependencyContainer` at launch. Tests swap in fakes.
 
-- **CameraService** — AVCaptureSession management on a dedicated DispatchQueue (AVFoundation requirement)
-- **RecordingEngine** — `@MainActor` state machine: idle → starting → recording → rotating → stopping → error
-- **ThermalMonitor** — `actor` type, observes `ProcessInfo.thermalState`, triggers 4-tier quality policy
-- **IncidentDetector** — `actor` type, Core Motion accelerometer at 60Hz, g-force threshold detection
-- **StorageManager** — Loop recording with FIFO deletion, storage cap enforcement
-- **LocationService** — GPS coordinates and speed per clip
-
-All services conform to protocols (`CameraServiceProtocol`, etc.) for testability. Wired via `DependencyContainer` at launch.
-
-### Concurrency Model
-
-- Camera pipeline: dedicated `DispatchQueue` (required by AVFoundation)
+**Concurrency model**
+- Camera: dedicated `DispatchQueue` (AVFoundation requirement)
 - Core Motion: `OperationQueue`
-- Everything else: `async/await` with `actor` isolation
-- ViewModels: `@Observable` macro
+- Everything else: `async/await` + `actor` isolation
+- ViewModels: `@Observable`
+
+### Backend — `backend/`
+
+Fastify API + BullMQ worker as separate deploy units. See `backend/README.md` for the full architecture diagram + API reference. Key conventions:
+
+- Routes use `fastify-type-provider-zod` — every request/response is Zod-validated, OpenAPI auto-derived.
+- Every user-owned row carries `userId`; queries go through the authorized service layer, never bare `findUnique`.
+- ULID primary keys (sortable, URL-safe).
+- Soft deletes via `deletedAt`; hard purge runs from the worker's GDPR reaper.
+- Errors thrown via `Errors.xxx()` render as `{ error: { code, message, details }, requestId }`.
 
 ## Critical Domain Knowledge
 
-### Thermal Management (4-Tier Policy)
+**Thermal tiers** (consider on every capture/UI decision)
 
-This is the app's most important feature. Every decision should consider thermal impact.
+| Tier | Actions |
+|---|---|
+| Nominal | Full user-configured quality |
+| Fair | 24fps, −20% bitrate, dim display |
+| Serious | Force 720p/24fps/1.5Mbps, min display, Core Motion → 10Hz |
+| Critical | 720p/15fps/800Kbps, display off, pause incident detection |
 
-| Tier | Trigger | Actions |
-|------|---------|---------|
-| Nominal | Default | Full user-configured quality |
-| Fair | `.fair` | 24fps, -20% bitrate, dim display |
-| Serious | `.serious` | Force 720p/24fps/1.5Mbps, min display, Core Motion → 10Hz |
-| Critical | `.critical` | 720p/15fps/800Kbps, display off, pause incident detection |
+60s recovery delay before stepping back up (prevents oscillation).
 
-Recovery requires 60-second delay before stepping back up (prevents oscillation).
+**Background recording** — `AVAudioSession .playAndRecord` + `CLLocationManager.allowsBackgroundLocationUpdates` + `BGProcessingTask` + Live Activity. Info.plist background modes: `audio`, `location`, `processing`.
 
-### Background Recording
+**Incident detection** — total g = `sqrt(x² + y² + z²) − 1.0`. Thresholds Low ≥ 6g, Med ≥ 3g, High ≥ 1.5g. 10s debounce. Protects current segment + 30s before/after (60s on Premium).
 
-Uses multi-signal approach to avoid iOS background kill:
-1. `AVAudioSession` with `.playAndRecord` (keeps capture session alive)
-2. `CLLocationManager` with `allowsBackgroundLocationUpdates = true`
-3. `BGProcessingTask` for storage cleanup when suspended
-4. Live Activity in Dynamic Island
+**Subscription tiers (StoreKit 2)**
 
-Info.plist background modes: `audio`, `location`, `processing`.
-
-### Incident Detection
-
-- Total g-force: `sqrt(x² + y² + z²) - 1.0`
-- Thresholds: Low=6g+, Medium=3g+, High=1.5g+
-- 10-second debounce between events
-- Protects current segment + 30s before/after (60s for Premium)
-
-### Subscription Tiers (StoreKit 2)
-
-| | Free | Pro ($4.99/mo) | Premium ($9.99/mo) |
-|--|------|---------------|-------------------|
+| | Free | Pro $4.99/mo | Premium $9.99/mo |
+|---|---|---|---|
 | Resolution | 720p | 1080p | 4K |
-| Storage | 2GB | 10GB | Unlimited |
-| Background | No | Yes | Yes |
-| Incidents | No | Yes | Yes (60s buffer) |
+| Storage | 2 GB | 10 GB | Unlimited |
+| Background | — | ✓ | ✓ |
+| Incidents | — | ✓ | ✓ (60s buffer) |
 
-## Data Models (SwiftData)
+## Build & Test
 
-- **RecordingSession** — groups clips, tracks duration and interruptions
-- **VideoClip** — file path, encoding params, GPS data, incident metadata, protection status
-- **Settings** — stored via `@AppStorage` (resolution, fps, codec, sensitivity, etc.)
+**iOS**
+```bash
+open "CarCam Pro.xcodeproj"
+xcodebuild -scheme "CarCam Pro" -destination 'platform=iOS Simulator,name=iPhone 16 Pro' build
+xcodebuild test   -scheme "CarCam Pro" -destination 'platform=iOS Simulator,name=iPhone 16 Pro'
+```
 
-File naming: `clip_{session-short-id}_{sequence}_{timestamp}.mp4`
-Storage layout: `Documents/Recordings/{YYYY-MM-DD}/{session_id}/`
+**Backend** (from `backend/`)
+```bash
+pnpm docker:up && pnpm prisma:migrate
+pnpm dev           # API :4000
+pnpm dev:worker    # BullMQ workers
+pnpm ci            # lint + typecheck + test
+```
 
-## UI Design
-
-- **iOS 26 Liquid Glass**: all UI uses `.glassEffect()` floating over live camera feed
-- **Dark-first**: #0A0A0A background, no opaque panels
-- **One-thumb operation**: Record button bottom-center, 72pt glass circle
-- **Interactive feedback**: `.interactive()` modifier for press animations, `.sensoryFeedback()` for haptics
-- Camera preview via `UIViewRepresentable`
+Never report a UI/feature change as "done" without running the build and, where possible, exercising the flow. Type-checks verify correctness, not behavior.
 
 ## Design Docs
 
-Detailed specifications live in `docs/`:
-- `01-PRD` — Product requirements, user personas, feature matrix
-- `02-Technical-Architecture` — Framework choices, concurrency model
-- `03-System-Design-Data-Models` — SwiftData schemas, file system layout
-- `04-Thermal-Battery-Optimization` — Thermal tier policies, battery strategies
-- `05-UI-UX-Specifications` — Screen-by-screen design specs
-- `06-Sprint-Plan-Roadmap` — 6-phase implementation plan
-- `08-Claude-Code-Implementation-Tickets` — Implementation tickets
-- `11-iOS26-Liquid-Glass-UI-Design-System` — Liquid Glass component specs
-- `12-Updated-Tickets-Pricing-and-UI` — Revised tickets with iOS 26 + pricing updates
+Spec-level detail lives in `docs/` — consult before implementing:
 
-Consult these docs before implementing any feature — they contain exact specifications.
+| Doc | For |
+|---|---|
+| `01-PRD` | Requirements, personas, feature matrix |
+| `02-Technical-Architecture` | Framework choices, concurrency |
+| `03-System-Design-Data-Models` | SwiftData schemas, FS layout |
+| `04-Thermal-Battery-Optimization` | Tier policies |
+| `05-UI-UX-Specifications` | Screen-by-screen design |
+| `06-Sprint-Plan-Roadmap` | 6-phase plan |
+| `08-Claude-Code-Implementation-Tickets` | Tickets |
+| `11-iOS26-Liquid-Glass-UI-Design-System` | Glass components |
+| `12-Updated-Tickets-Pricing-and-UI` | iOS 26 + pricing revisions |
+| `POLICE_DETECTION_IMPLEMENTATION.md` | Police-detection subsystem spec |
+
+## UI (iOS 26 Liquid Glass)
+
+- `.glassEffect(.regular.interactive())` for all floating controls
+- Dark-first `#0A0A0A` background, no opaque panels
+- One-thumb: record button bottom-center, 72pt glass circle
+- `.sensoryFeedback()` for haptics, `.interactive()` for press states
+- Camera preview via `UIViewRepresentable`
+- SF Pro typography, rounded corner tokens from `CCTheme.swift`
+
+## Operating Rules
+
+- **Risky actions** (force push, destructive git, deleting uncommitted work, shared-resource mutations, third-party uploads): confirm first.
+- **Never use `--no-verify`** or skip hooks. Fix the underlying issue.
+- **Only commit when explicitly asked.** Staging decisions during a task are fine; creating commits is not.
+- **Use the task list** (`TaskCreate`/`TaskUpdate`) for any multi-step work so the user sees progress.
+- **Delegate to agents** (Explore, code-explorer, code-reviewer) for broad searches or second-opinion reviews; don't duplicate their work.

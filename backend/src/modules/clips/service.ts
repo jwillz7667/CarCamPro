@@ -95,16 +95,16 @@ export class ClipsService {
     startedAt: Date;
     endedAt: Date;
     isProtected: boolean;
-    protectionReason?: string;
+    protectionReason?: string | undefined;
     hasIncident: boolean;
-    incidentSeverity?: string;
-    peakGForce?: number;
-    incidentTimestamp?: Date;
-    startLatitude?: number;
-    startLongitude?: number;
-    endLatitude?: number;
-    endLongitude?: number;
-    averageSpeedMPH?: number;
+    incidentSeverity?: string | undefined;
+    peakGForce?: number | undefined;
+    incidentTimestamp?: Date | undefined;
+    startLatitude?: number | undefined;
+    startLongitude?: number | undefined;
+    endLatitude?: number | undefined;
+    endLongitude?: number | undefined;
+    averageSpeedMPH?: number | undefined;
   }) {
     const clip = await this.deps.prisma.clip.findUnique({
       where: { id: params.clipId },
@@ -153,8 +153,8 @@ export class ClipsService {
 
   async listClips(params: {
     userId: string;
-    protectedOnly?: boolean;
-    cursor?: string;
+    protectedOnly?: boolean | undefined;
+    cursor?: string | undefined;
     limit: number;
   }) {
     const where = {

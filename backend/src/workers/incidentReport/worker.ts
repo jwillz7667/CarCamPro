@@ -1,5 +1,5 @@
-import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { createHash } from 'node:crypto';
+import { PutObjectCommand, type S3Client } from '@aws-sdk/client-s3';
 import type { PrismaClient } from '@prisma/client';
 import { Worker, type Processor } from 'bullmq';
 import type { Logger } from 'pino';

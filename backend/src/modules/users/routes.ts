@@ -2,6 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 
+import { stripUndefined } from '../../lib/objects.js';
+
 /**
  * User profile routes.
  *
@@ -65,7 +67,7 @@ export const usersRoutes = async (app: FastifyInstance) => {
       if (!request.auth) throw new Error('unreachable');
       const user = await app.prisma.user.update({
         where: { id: request.auth.userId },
-        data: request.body,
+        data: stripUndefined(request.body),
       });
       return {
         id: user.id,

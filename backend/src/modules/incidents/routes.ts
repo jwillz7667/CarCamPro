@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
@@ -138,7 +139,9 @@ export const incidentsRoutes = async (app: FastifyInstance) => {
 
 /**
  * Snapshot the data the PDF renderer will consume. Stored on the row so
- * re-rendering with a new template produces the same content.
+ * re-rendering with a new template produces the same content. Prisma's
+ * Decimal columns come through as objects — `asNumber` normalizes them to
+ * plain JSON-safe numbers.
  */
 const buildPayload = (clip: {
   id: string;
@@ -147,14 +150,14 @@ const buildPayload = (clip: {
   durationSeconds: number;
   peakGForce: number | null;
   incidentSeverity: string | null;
-  startLatitude: unknown;
-  startLongitude: unknown;
-  endLatitude: unknown;
-  endLongitude: unknown;
+  startLatitude: Prisma.Decimal | null;
+  startLongitude: Prisma.Decimal | null;
+  endLatitude: Prisma.Decimal | null;
+  endLongitude: Prisma.Decimal | null;
   averageSpeedMPH: number | null;
   resolution: string;
   codec: string;
-}) => ({
+}): Prisma.InputJsonValue => ({
   clip: {
     id: clip.id,
     startedAt: clip.startedAt.toISOString(),
@@ -166,10 +169,16 @@ const buildPayload = (clip: {
   telemetry: {
     peakGForce: clip.peakGForce,
     severity: clip.incidentSeverity,
-    startLatitude: clip.startLatitude,
-    startLongitude: clip.startLongitude,
-    endLatitude: clip.endLatitude,
-    endLongitude: clip.endLongitude,
+    startLatitude: asNumber(clip.startLatitude),
+    startLongitude: asNumber(clip.startLongitude),
+    endLatitude: asNumber(clip.endLatitude),
+    endLongitude: asNumber(clip.endLongitude),
     averageSpeedMPH: clip.averageSpeedMPH,
   },
 });
+
+const asNumber = (v: Prisma.Decimal | null): number | null => {
+  if (v === null) return null;
+  const n = Number(v.toString());
+  return Number.isFinite(n) ? n : null;
+};

@@ -10,6 +10,23 @@ import { z } from 'zod';
  * On validation failure the process exits with code 1 and prints the list of
  * missing / malformed variables — never start a partially-configured service.
  */
+
+/**
+ * Proper boolean env coercion. `z.coerce.boolean()` alone is broken for env
+ * vars — it runs `Boolean(input)`, which returns `true` for any non-empty
+ * string including `"false"` and `"0"`. This factory parses the canonical
+ * truthy strings explicitly and treats everything else as false.
+ */
+const envBool = (defaultValue: boolean) =>
+  z
+    .union([z.boolean(), z.string()])
+    .default(defaultValue)
+    .transform((v) => {
+      if (typeof v === 'boolean') return v;
+      const n = v.trim().toLowerCase();
+      return n === 'true' || n === '1' || n === 'yes' || n === 'y' || n === 'on';
+    });
+
 const EnvSchema = z.object({
   // Node / server
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -48,7 +65,7 @@ const EnvSchema = z.object({
   S3_BUCKET_REPORTS: z.string(),
   S3_ACCESS_KEY_ID: z.string(),
   S3_SECRET_ACCESS_KEY: z.string(),
-  S3_FORCE_PATH_STYLE: z.coerce.boolean().default(true),
+  S3_FORCE_PATH_STYLE: envBool(true),
   S3_PRESIGN_TTL: z.coerce.number().int().positive().default(900),
 
   // Security
@@ -62,7 +79,7 @@ const EnvSchema = z.object({
         .filter(Boolean),
     ),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
-  TRUST_PROXY: z.coerce.boolean().default(false),
+  TRUST_PROXY: envBool(false),
 
   // Admin surface — disabled when unset. Treat as a shared secret; rotate via
   // the deploy environment, never commit. Minimum length is 32 bytes so a
@@ -92,7 +109,7 @@ const EnvSchema = z.object({
 
   // Observability — OpenTelemetry. When disabled the SDK is never imported
   // so the binary stays lean in environments that don't need tracing.
-  OTEL_ENABLED: z.coerce.boolean().default(false),
+  OTEL_ENABLED: envBool(false),
   OTEL_SERVICE_NAME: z.string().default('carcam-api'),
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
   OTEL_EXPORTER_OTLP_HEADERS: z
@@ -112,8 +129,8 @@ const EnvSchema = z.object({
 
   // OpenAPI — docs exposure. In prod, lock down behind a feature flag to
   // avoid advertising admin surface area.
-  OPENAPI_ENABLED: z.coerce.boolean().default(true),
-  OPENAPI_UI_ENABLED: z.coerce.boolean().default(true),
+  OPENAPI_ENABLED: envBool(true),
+  OPENAPI_UI_ENABLED: envBool(true),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -121,7 +138,6 @@ export type Env = z.infer<typeof EnvSchema>;
 const parsed = EnvSchema.safeParse(process.env);
 
 if (!parsed.success) {
-  // eslint-disable-next-line no-console
   console.error('✗ Invalid environment:\n', parsed.error.flatten().fieldErrors);
   process.exit(1);
 }

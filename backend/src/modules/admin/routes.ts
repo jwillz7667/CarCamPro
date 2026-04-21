@@ -259,7 +259,7 @@ export const adminRoutes = async (app: FastifyInstance) => {
         throw Errors.conflict('User must be soft-deleted before hard purge can be scheduled');
       }
 
-      const jobId = await app.queues.enqueueHardPurge({ userId: user.id });
+      const jobId = await app.queues.enqueueHardPurge({ userId: user.id, batchSize: 1 });
       await app.prisma.auditLog.create({
         data: {
           userId: user.id,

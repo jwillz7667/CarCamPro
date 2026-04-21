@@ -87,8 +87,10 @@ export class QueueRegistry {
    *  shape never reaches Redis. */
   async enqueueIncidentReport(payload: IncidentReportJob, options?: JobsOptions): Promise<string> {
     const parsed = IncidentReportJobSchema.parse(payload);
+    // BullMQ reserves `:` inside job IDs for its own key prefixing, so the
+    // separator is `-` here; the report ULID is already unique.
     const job = await this.incidentReport.add('render', parsed, {
-      jobId: `incident:${parsed.reportId}`, // idempotent — one report per clip
+      jobId: `incident-${parsed.reportId}`, // idempotent — one report per clip
       ...options,
     });
     return job.id ?? parsed.reportId;
@@ -96,7 +98,7 @@ export class QueueRegistry {
 
   async enqueueHardPurge(payload: HardPurgeJob, options?: JobsOptions): Promise<string> {
     const parsed = HardPurgeJobSchema.parse(payload);
-    const jobId = parsed.userId ? `purge:user:${parsed.userId}` : `purge:scan:${Date.now()}`;
+    const jobId = parsed.userId ? `purge-user-${parsed.userId}` : `purge-scan-${Date.now()}`;
     const job = await this.hardPurge.add('purge', parsed, { jobId, ...options });
     return job.id ?? jobId;
   }
@@ -121,14 +123,30 @@ export class QueueRegistry {
   }
 }
 
+export interface QueueSnapshot {
+  name: string;
+  waiting: number;
+  active: number;
+  delayed: number;
+  failed: number;
+  completed: number;
+}
+
 /**
  * Derive a human-readable queue health snapshot — used by the admin
  * dashboard and `/health/ready` if we ever surface it.
  */
-export const snapshotQueues = async (registry: QueueRegistry) => {
-  const snapshot = async (queue: Queue) => {
+export const snapshotQueues = async (registry: QueueRegistry): Promise<QueueSnapshot[]> => {
+  const snapshot = async (queue: Queue): Promise<QueueSnapshot> => {
     const counts = await queue.getJobCounts('waiting', 'active', 'delayed', 'failed', 'completed');
-    return { name: queue.name, ...counts };
+    return {
+      name: queue.name,
+      waiting: Number(counts['waiting'] ?? 0),
+      active: Number(counts['active'] ?? 0),
+      delayed: Number(counts['delayed'] ?? 0),
+      failed: Number(counts['failed'] ?? 0),
+      completed: Number(counts['completed'] ?? 0),
+    };
   };
   return Promise.all([
     snapshot(registry.incidentReport),

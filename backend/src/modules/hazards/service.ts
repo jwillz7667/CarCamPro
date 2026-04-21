@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import type { PrismaClient, HazardSighting, HazardType } from '@prisma/client';
 
 import { hmacSha256, randomBuffer } from '../../lib/crypto.js';
@@ -55,10 +56,14 @@ export class HazardsService {
     const id = newId();
     const expiresAt = new Date(Date.now() + DEFAULT_TTL_MS);
 
+    // Prisma 6 maps Prisma fields to camelCase Postgres columns by default
+    // (no `@map` directives in the schema for this model). The camelCase
+    // identifiers below are intentionally double-quoted so Postgres preserves
+    // case instead of down-casing them to lowercase and failing to resolve.
     await this.deps.prisma.$executeRaw`
       INSERT INTO hazard_sightings
-        (id, type, geohash, reporter_hash, severity, confidence, location,
-         upvotes, downvotes, expires_at, created_at)
+        (id, type, geohash, "reporterHash", severity, confidence, location,
+         upvotes, downvotes, "expiresAt", "createdAt")
       VALUES
         (${id}, ${params.type}::hazard_type, ${geohash}, ${reporterHash},
          ${params.severity}, ${params.confidence},
@@ -79,8 +84,15 @@ export class HazardsService {
     lng: number;
     radiusMeters: number;
     limit: number;
-    type?: HazardType;
+    type?: HazardType | undefined;
   }) {
+    // Prisma.sql composes fragments safely — each `${}` becomes a bound
+    // parameter, no string concatenation, no SQL injection surface even if
+    // `params.type` were user-controlled (it is, via Zod-enum-validated query).
+    const typeFilter = params.type
+      ? Prisma.sql`AND type = ${params.type}::hazard_type`
+      : Prisma.empty;
+
     const rows = await this.deps.prisma.$queryRaw<
       {
         id: string;
@@ -90,22 +102,22 @@ export class HazardsService {
         confidence: number;
         upvotes: number;
         downvotes: number;
-        expires_at: Date;
-        created_at: Date;
+        expiresAt: Date;
+        createdAt: Date;
         distance_meters: number;
         lat: number;
         lng: number;
       }[]
-    >`
+    >(Prisma.sql`
       SELECT
         id, type, geohash, severity, confidence, upvotes, downvotes,
-        expires_at, created_at,
+        "expiresAt", "createdAt",
         ST_Distance(location, ST_SetSRID(ST_MakePoint(${params.lng}, ${params.lat}), 4326)::geography) AS distance_meters,
         ST_Y(location::geometry) AS lat,
         ST_X(location::geometry) AS lng
       FROM hazard_sightings
-      WHERE expires_at > NOW()
-        ${params.type ? this.typeClause(params.type) : this.emptyClause}
+      WHERE "expiresAt" > NOW()
+        ${typeFilter}
         AND ST_DWithin(
           location,
           ST_SetSRID(ST_MakePoint(${params.lng}, ${params.lat}), 4326)::geography,
@@ -113,7 +125,7 @@ export class HazardsService {
         )
       ORDER BY distance_meters ASC
       LIMIT ${params.limit}
-    `;
+    `);
 
     return rows.map((r) => ({
       id: r.id,
@@ -122,8 +134,8 @@ export class HazardsService {
       confidence: r.confidence,
       upvotes: r.upvotes,
       downvotes: r.downvotes,
-      expiresAt: r.expires_at,
-      createdAt: r.created_at,
+      expiresAt: r.expiresAt,
+      createdAt: r.createdAt,
       distanceMeters: r.distance_meters,
       latitude: r.lat,
       longitude: r.lng,
@@ -158,17 +170,17 @@ export class HazardsService {
         UPDATE hazard_sightings SET
           upvotes = (
             SELECT COUNT(*) FROM hazard_votes
-            WHERE sighting_id = ${params.sightingId} AND direction = 1
+            WHERE "sightingId" = ${params.sightingId} AND direction = 1
           ),
           downvotes = (
             SELECT COUNT(*) FROM hazard_votes
-            WHERE sighting_id = ${params.sightingId} AND direction = -1
+            WHERE "sightingId" = ${params.sightingId} AND direction = -1
           ),
-          expires_at = GREATEST(
-            expires_at,
+          "expiresAt" = GREATEST(
+            "expiresAt",
             NOW() + INTERVAL '1 hour' * (
               SELECT COUNT(*) FROM hazard_votes
-              WHERE sighting_id = ${params.sightingId} AND direction = 1
+              WHERE "sightingId" = ${params.sightingId} AND direction = 1
             )
           )
         WHERE id = ${params.sightingId}
@@ -178,7 +190,7 @@ export class HazardsService {
 
   // MARK: - Internal
 
-  private async getOrCreateDailySalt(dayKey: string): Promise<Buffer> {
+  private async getOrCreateDailySalt(dayKey: string): Promise<Uint8Array> {
     const existing = await this.deps.prisma.dailySalt.findUnique({ where: { dayKey } });
     if (existing) return existing.salt;
     const salt = randomBuffer(32);
@@ -195,12 +207,5 @@ export class HazardsService {
 
   private todayKey(): string {
     return new Date().toISOString().slice(0, 10);
-  }
-
-  // Raw-SQL fragment helpers (Prisma.sql would be cleaner but our dep list
-  // is intentionally minimal — these are small, static, non-user-input).
-  private readonly emptyClause = { strings: [''], values: [] } as unknown as Parameters<typeof this.deps.prisma.$queryRaw>[0];
-  private typeClause(type: HazardType): ReturnType<typeof this.deps.prisma.$queryRaw> {
-    return this.deps.prisma.$queryRaw`AND type = ${type}::hazard_type` as unknown as ReturnType<typeof this.deps.prisma.$queryRaw>;
   }
 }

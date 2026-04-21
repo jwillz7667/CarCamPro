@@ -1,5 +1,5 @@
 import type { PrismaClient, SubscriptionStatus } from '@prisma/client';
-import type Redis from 'ioredis';
+import type { Redis } from 'ioredis';
 
 import { Errors } from '../../lib/errors.js';
 import { storageQuotaFor } from '../subscriptions/service.js';
@@ -163,8 +163,8 @@ export class AdminService {
   // ─── Audit + metrics ─────────────────────────────────────
 
   async tailAudit(params: {
-    userId?: string;
-    action?: string;
+    userId?: string | undefined;
+    action?: string | undefined;
     limit: number;
   }) {
     return this.deps.prisma.auditLog.findMany({

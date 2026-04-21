@@ -3,7 +3,7 @@ import type { FastifyRequest } from 'fastify';
 
 import { env } from '../../config/env.js';
 import { isIpInAllowlist } from '../../lib/cidr.js';
-import { sha256 } from '../../lib/crypto.js';
+import { sha256, type Bytes } from '../../lib/crypto.js';
 import { Errors } from '../../lib/errors.js';
 
 /**
@@ -23,7 +23,7 @@ import { Errors } from '../../lib/errors.js';
  * are tagged with `action: admin.<verb>` to keep the trail distinct.
  */
 
-const prehashedAdminKey: Buffer | null = env.ADMIN_API_KEY
+const prehashedAdminKey: Bytes | null = env.ADMIN_API_KEY
   ? sha256(env.ADMIN_API_KEY)
   : null;
 

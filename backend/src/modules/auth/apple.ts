@@ -18,14 +18,14 @@ const JWKS = jose.createRemoteJWKSet(new URL('https://appleid.apple.com/auth/key
 
 export interface AppleIdentityClaims {
   sub: string;
-  email?: string;
-  emailVerified?: boolean;
-  isPrivateEmail?: boolean;
+  email?: string | undefined;
+  emailVerified?: boolean | undefined;
+  isPrivateEmail?: boolean | undefined;
   iss: string;
   aud: string;
   iat: number;
   exp: number;
-  nonce?: string;
+  nonce?: string | undefined;
 }
 
 export const verifyAppleIdentityToken = async (
