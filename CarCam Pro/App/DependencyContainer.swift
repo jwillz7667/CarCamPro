@@ -43,6 +43,17 @@ final class DependencyContainer {
         recordingEngine.configure(modelContainer: modelContainer, storageManager: storage)
         FileSystemManager.ensureBaseDirectoriesExist()
 
+        // Boot iCloud settings roaming BEFORE any service reads a
+        // preference. The bootstrap merges remote state into local
+        // UserDefaults synchronously, so the subsequent
+        // `settings.iCloudBackupEnabled` / `settings.incidentSensitivity`
+        // reads below see the user's roamed values, not stale defaults
+        // from a fresh install.
+        CloudSettingsStore.shared.bootstrap { [weak self] changedKeys in
+            guard let self else { return }
+            self.handleExternalSettingsChange(changedKeys)
+        }
+
         // Storage cap enforcement is wired through the shim gate so the
         // SettingsCoordinator can trigger it without holding a ModelContainer.
         StorageEnforcementGate.enforceAction = { @Sendable [weak storage] in
@@ -104,6 +115,52 @@ final class DependencyContainer {
         // Wire location samples → recording metadata.
         locationService.onUpdate { [weak self] sample in
             self?.recordingEngine.ingestLocation(sample)
+        }
+    }
+
+    // MARK: - iCloud settings sync
+
+    /// Called from `CloudSettingsStore.bootstrap`'s observer when another
+    /// device on the same Apple ID pushes a settings change via iCloud KVS.
+    ///
+    /// Two responsibilities:
+    ///   1. Re-fire the `@Observable` signal on `AppSettings` so every
+    ///      bound SwiftUI view redraws with the new value.
+    ///   2. Re-invoke the `SettingsCoordinator` side-effects tied to each
+    ///      key — e.g. if the sensitivity changed remotely, the incident
+    ///      detector's in-memory threshold is stale and must be updated.
+    private func handleExternalSettingsChange(_ changedKeys: [String]) {
+        settings.notifyExternalChange(keys: changedKeys)
+        guard let coordinator = settingsCoordinator else { return }
+
+        for key in changedKeys {
+            switch key {
+            case "resolution", "frameRate", "codec", "bitrateMultiplier",
+                 "audioEnabled", "selectedCamera":
+                coordinator.applyCameraConfiguration()
+            case "incidentSensitivity":
+                coordinator.applyIncidentThreshold()
+            case "incidentDetectionEnabled":
+                Task { [settings, coordinator] in
+                    await coordinator.applyIncidentDetection(enabled: settings.incidentDetectionEnabled)
+                }
+            case "storageCap":
+                coordinator.applyStorageCap()
+            case "dimDisplayWhileRecording":
+                coordinator.applyDisplayDimming()
+            case "iCloudBackupEnabled":
+                coordinator.setiCloudBackup(settings.iCloudBackupEnabled)
+            case "autoExportToPhotos":
+                coordinator.applyPhotosAuthorization()
+            case "policeDetectionEnabled":
+                PoliceDetectionSystem.shared.setEnabled(settings.policeDetectionEnabled)
+            case "parkingSentryEnabled":
+                recordingEngine.setParkingSentryEnabled(settings.parkingSentryEnabled)
+            default:
+                // Purely-UI preferences (overlays, haptics, watermark) need no
+                // coordinator call — the next redraw reads them directly.
+                continue
+            }
         }
     }
 

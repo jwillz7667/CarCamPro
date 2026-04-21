@@ -198,6 +198,56 @@ final class SettingsCoordinator {
         UIScreen.main.brightness = 0.5
     }
 
+    // MARK: - Re-apply entrypoints (for iCloud KVS external-change merge)
+    //
+    // These idempotent methods read the current `AppSettings` values and
+    // push them back through the service layer. Used by
+    // `DependencyContainer.handleExternalSettingsChange` when another
+    // device on the same Apple ID pushes a preference update via iCloud —
+    // the local UserDefaults is already updated by `CloudSettingsStore`,
+    // but in-memory service state (camera config, incident threshold,
+    // display brightness) needs to be re-synced.
+
+    /// Re-apply the current capture configuration. Safe to call at any
+    /// time; no-ops while recording.
+    func applyCameraConfiguration() {
+        reconfigureCameraIfIdle()
+    }
+
+    /// Push the persisted sensitivity to the `IncidentDetector` actor.
+    func applyIncidentThreshold() {
+        let threshold = settings.incidentSensitivity.threshold
+        Task { [incident] in
+            await incident.setThreshold(threshold)
+        }
+    }
+
+    /// Start/stop the detector to match the persisted preference.
+    func applyIncidentDetection(enabled: Bool) async {
+        if enabled {
+            try? await incident.start()
+            await incident.setThreshold(settings.incidentSensitivity.threshold)
+        } else {
+            await incident.stop()
+        }
+    }
+
+    /// Re-evaluate the storage cap against the current library contents.
+    func applyStorageCap() {
+        Task.detached {
+            try? await StorageEnforcementGate.enforce()
+        }
+    }
+
+    /// Prompt for Photos authorization if the setting is enabled and we
+    /// don't already hold it. Safe to call repeatedly — the OS remembers.
+    func applyPhotosAuthorization() {
+        guard settings.autoExportToPhotos else { return }
+        Task {
+            _ = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+        }
+    }
+
     // MARK: - Utility
 
     func resetAllSettings() {
