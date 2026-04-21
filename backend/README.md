@@ -28,30 +28,36 @@ Everything else — trip metadata sync, settings roaming — belongs in CloudKit
 ## ▎ Architecture
 
 ```
-         ┌─────────────────────────────────────────────────────┐
-         │                  Fastify 5 app                      │
-         │  ┌─ auth ──┬─ clips ──┬─ subs ──┬─ hazards ──┐      │
-         │  │  /apple │  /init   │ /verify │ /          │      │
-         │  │  /refresh /complete│ /webhook│ /nearby    │      │
-         │  │  /logout │ /:id    │ /current│ /:id/vote  │      │
-         │  └─────────┴──────────┴─────────┴────────────┘      │
-         │                                                     │
-         │   @fastify/{helmet, cors, rate-limit, sensible}     │
-         │   fastify-type-provider-zod — request + response    │
-         │   validated with Zod, JSON-schema derived           │
-         │                                                     │
-         │   plugins/{prisma, redis, storage, auth, rateLimit} │
-         └─┬──────────────┬──────────────┬────────────────────┘
-           │              │              │
-      ┌────▼────┐    ┌────▼────┐    ┌────▼────┐
-      │ Postgres│    │  Redis  │    │  S3/R2  │
-      │ + PostGIS│    │         │    │         │
-      │ (Prisma)│    │ refresh │    │ clips,  │
-      │         │    │ revokes,│    │ thumbs, │
-      │         │    │ rate    │    │ reports │
-      │         │    │ limit,  │    │ buckets │
-      │         │    │ idem    │    │         │
-      └─────────┘    └─────────┘    └─────────┘
+  ┌──────────────────────────┐        ┌──────────────────────────┐
+  │       Fastify API        │        │    Worker (BullMQ)       │
+  │  (src/server.ts)         │        │    (src/worker.ts)       │
+  │                          │──────▶│                          │
+  │  auth · clips · subs     │ enqueue│  incident-report → PDF   │
+  │  hazards · incidents     │        │  hard-purge → GDPR       │
+  │  admin · /docs · /openapi│        │  hazard-expiry → sweep   │
+  │                          │        │  + BullMQ cron scheduler │
+  │  helmet · cors · rate    │        │                          │
+  │  limit · Zod validation  │        │  pdfkit · S3 streams     │
+  └─┬─────────────┬──────────┘        └─┬─────────────┬──────────┘
+    │             │                     │             │
+    │     ┌───────┴───────┐      ┌──────┴──────┐      │
+    ├────▶│   Postgres    │◀─────┤   Workers   │      │
+    │     │  + PostGIS    │      │   (Prisma)  │      │
+    │     └───────────────┘      └─────────────┘      │
+    │                                                 │
+    │     ┌───────────────┐      ┌─────────────┐      │
+    ├────▶│     Redis     │◀─────┤  BullMQ     │      │
+    │     │  revocations  │      │  queues +   │      │
+    │     │  rate limit   │      │  schedules  │      │
+    │     │  idempotency  │      └─────────────┘      │
+    │     └───────────────┘                           │
+    │                                                 │
+    │     ┌───────────────┐                           │
+    └────▶│   S3 / R2     │◀──────────────────────────┘
+          │  clips ·      │
+          │  thumbs ·     │
+          │  reports      │
+          └───────────────┘
 ```
 
 ### Authentication
@@ -123,6 +129,7 @@ cp .env.example .env              # fill in real values for non-local deploys
 pnpm docker:up                    # Postgres + Redis + MinIO + bucket init
 pnpm prisma:migrate               # apply migrations
 pnpm dev                          # Fastify on :4000
+pnpm dev:worker                   # BullMQ workers (separate terminal)
 ```
 
 Health check:
@@ -149,10 +156,20 @@ pnpm ci                     # all of the above
 ### Production build
 
 ```bash
-pnpm build                         # TS → dist/
-node dist/server.js                # run
+pnpm build                                # TS → dist/
+node dist/server.js                       # API process
+node dist/worker.js                       # Worker process
 # or:
-docker build -f docker/Dockerfile -t carcam-api .
+docker build -f docker/Dockerfile        -t carcam-api    .
+docker build -f docker/Dockerfile.worker -t carcam-worker .
+```
+
+### OpenAPI
+
+```bash
+curl http://localhost:4000/openapi.json   # machine-readable spec
+open http://localhost:4000/docs           # Swagger UI (dev only by default)
+pnpm openapi:emit --out openapi.json      # emit for CI / iOS codegen
 ```
 
 ---
@@ -214,9 +231,82 @@ Post-deploy:
   GET    /v1/hazards/nearby
   POST   /v1/hazards/:id/vote
 
+  # ── Admin (x-admin-api-key) ───────────────────────────────
+  GET    /v1/admin/metrics
+  GET    /v1/admin/queues
+  GET    /v1/admin/users?q=&limit=
+  GET    /v1/admin/users/:id
+  POST   /v1/admin/users/:id/revoke-sessions
+  POST   /v1/admin/users/:id/purge
+  POST   /v1/admin/subscriptions/:id/override
+  GET    /v1/admin/subscriptions/by-original-tx/:originalTransactionId/refunds
+  GET    /v1/admin/audit?userId=&action=&limit=
+
   GET    /health                          → liveness
   GET    /health/ready                    → DB + Redis probe
+  GET    /openapi.json                    → OpenAPI 3.1 spec
+  GET    /docs                            → Swagger UI (dev)
 ```
+
+---
+
+## ▎ Background workers
+
+The worker process (`src/worker.ts`) owns three BullMQ queues, all sharing the API's Redis instance under a `bull:carcam.*` key-prefix:
+
+| Queue | Trigger | Work |
+|:--|:--|:--|
+| `carcam.incident.report` | `POST /v1/incidents/:clipId/report` | Render PDF via pdfkit, upload to `S3_BUCKET_REPORTS`, flip `sizeBytes` on the `IncidentReport` row. |
+| `carcam.gdpr.hard_purge` | Daily cron (`HARD_PURGE_CRON`) + admin manual | Find users whose soft-delete cooldown has elapsed; purge their S3 prefixes + cascade-delete DB rows. |
+| `carcam.hazard.expiry` | Every 10 min (`HAZARD_EXPIRY_CRON`) | Delete expired hazard sightings in bounded batches. |
+
+Repeatable jobs are registered idempotently at worker boot via BullMQ's `repeat` primitive, so replicas converge on one schedule regardless of how many you run.
+
+```bash
+pnpm dev:worker                   # local
+docker build -f docker/Dockerfile.worker -t carcam-worker .
+```
+
+---
+
+## ▎ Observability
+
+**Structured logs** — pino with per-request correlation IDs and header redaction for `authorization`, `cookie`, `identityToken`, `refreshToken`, `appleSignedPayload`. In dev, `pino-pretty` renders to the console.
+
+**OpenTelemetry** — opt-in via `OTEL_ENABLED=true`. The SDK is dynamically imported so disabled deploys don't pay the cost. Instruments Fastify, Prisma, ioredis, http, and dns (dns instrumentation disabled — noisy). Export via OTLP HTTP to any compatible collector (Honeycomb, Tempo, Grafana Cloud, Datadog).
+
+```bash
+OTEL_ENABLED=true \
+OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.honeycomb.io/v1/traces \
+OTEL_EXPORTER_OTLP_HEADERS="x-honeycomb-team=$HONEYCOMB_KEY" \
+pnpm start
+```
+
+**Admin metrics** — `GET /v1/admin/metrics` returns live counts (active users, paying subs, clips, pending PDFs, live hazards). `GET /v1/admin/queues` returns per-queue BullMQ counts.
+
+---
+
+## ▎ Admin surface
+
+Admin endpoints are gated behind a shared-secret API key (`x-admin-api-key` header) and an optional source IP allowlist. **Both** gates must pass; neither is a substitute for the other. Missing or misconfigured `ADMIN_API_KEY` disables the entire surface.
+
+```bash
+# User lookup + detail
+curl -H "x-admin-api-key: $ADMIN_API_KEY" -H "x-admin-actor: jwillz" \
+  "https://api.carcampro.app/v1/admin/users?q=user@example.com"
+
+# Refund history via Apple's App Store Server API
+curl -H "x-admin-api-key: $ADMIN_API_KEY" \
+  "https://api.carcampro.app/v1/admin/subscriptions/by-original-tx/2000000123456789/refunds"
+
+# Immediate hard-purge (requires soft-delete + explicit acknowledgement)
+curl -X POST -H "x-admin-api-key: $ADMIN_API_KEY" -H "x-admin-actor: jwillz" \
+  -H 'content-type: application/json' \
+  -d '{"acknowledgement":"customer email 2026-04-20 confirms no in-flight disputes"}' \
+  "https://api.carcampro.app/v1/admin/users/01HK.../purge"
+```
+
+Every admin mutation writes an `audit_logs` row with the actor, reason, and outcome.
 
 All responses follow the envelope:
 

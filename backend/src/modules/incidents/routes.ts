@@ -12,12 +12,13 @@ import { newId } from '../../lib/ids.js';
  *   POST /v1/incidents/:clipId/report   — enqueue PDF generation
  *   GET  /v1/incidents/:clipId/report   — fetch status + presigned download
  *
- * PDF rendering itself happens in a worker process so the API replica never
- * blocks. This module exposes the creation + retrieval endpoints; the
- * `IncidentReport` row has a `pdfStorageKey` that gets populated once the
- * worker is done. For this initial cut we mark the report as "queued" and
- * return without actually invoking the worker — that wire-up happens in
- * `workers/incident-report.ts` (separate deploy unit) in a follow-up.
+ * PDF rendering itself happens in the worker process (see `src/worker.ts`)
+ * so the API replica never blocks on PDFKit. This module:
+ *   1. Creates (or idempotently looks up) the `IncidentReport` row.
+ *   2. Enqueues a BullMQ job under a deterministic `jobId` (one per report)
+ *      so duplicate POSTs coalesce.
+ *   3. Serves the GET with a presigned download once the worker has
+ *      populated `sizeBytes`.
  */
 export const incidentsRoutes = async (app: FastifyInstance) => {
   const typed = app.withTypeProvider<ZodTypeProvider>();
@@ -45,9 +46,19 @@ export const incidentsRoutes = async (app: FastifyInstance) => {
         throw Errors.conflict('Clip must be uploaded before generating a report');
       }
 
-      // Idempotency — one report per clip. Return the existing ID if present.
+      // Idempotency — one report per clip. If a row already exists, we still
+      // re-enqueue the render job (the queue itself dedupes on `jobId`), so
+      // a retry after a worker crash picks up where we left off.
       const existing = await app.prisma.incidentReport.findUnique({ where: { clipId: clip.id } });
       if (existing) {
+        if (existing.sizeBytes === 0) {
+          await app.queues.enqueueIncidentReport({
+            reportId: existing.id,
+            userId: existing.userId,
+            clipId: existing.clipId,
+            attempt: 1,
+          });
+        }
         return reply.status(202).send({ reportId: existing.id, status: 'QUEUED' });
       }
 
@@ -65,9 +76,13 @@ export const incidentsRoutes = async (app: FastifyInstance) => {
         },
       });
 
-      // Publish to the worker queue. A future PR adds a real queue (BullMQ /
-      // Cloudflare Queues); for now, rely on a periodic scan for reports with
-      // sizeBytes == 0.
+      await app.queues.enqueueIncidentReport({
+        reportId,
+        userId: clip.userId,
+        clipId: clip.id,
+        attempt: 1,
+      });
+
       app.log.info({ reportId, clipId: clip.id }, 'incident report queued');
 
       return reply.status(202).send({ reportId, status: 'QUEUED' });

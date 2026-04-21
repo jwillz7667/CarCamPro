@@ -6,7 +6,6 @@ import {
   ZodTypeProvider,
   serializerCompiler,
   validatorCompiler,
-  jsonSchemaTransform,
 } from 'fastify-type-provider-zod';
 import { nanoid } from 'nanoid';
 
@@ -16,10 +15,13 @@ import { AppError } from './lib/errors.js';
 
 import authPlugin from './plugins/auth.js';
 import prismaPlugin from './plugins/prisma.js';
+import queuesPlugin from './plugins/queues.js';
 import rateLimitPlugin from './plugins/rateLimit.js';
 import redisPlugin from './plugins/redis.js';
 import storagePlugin from './plugins/storage.js';
+import swaggerPlugin from './plugins/swagger.js';
 
+import { adminRoutes } from './modules/admin/routes.js';
 import { authRoutes } from './modules/auth/routes.js';
 import { clipsRoutes } from './modules/clips/routes.js';
 import { devicesRoutes } from './modules/devices/routes.js';
@@ -77,9 +79,13 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   await app.register(redisPlugin);
   await app.register(storagePlugin);
 
-  // Auth + rate limit (depend on redis).
+  // Auth + rate limit + queues (depend on redis).
   await app.register(authPlugin);
   await app.register(rateLimitPlugin);
+  await app.register(queuesPlugin);
+
+  // OpenAPI must register BEFORE routes so it can hook into the compiler.
+  await app.register(swaggerPlugin);
 
   // Health probes.
   app.get('/health', async () => ({
@@ -108,6 +114,7 @@ export const buildApp = async (): Promise<FastifyInstance> => {
   await app.register(subscriptionsRoutes, { prefix: '/v1/subscriptions' });
   await app.register(incidentsRoutes, { prefix: '/v1/incidents' });
   await app.register(hazardsRoutes, { prefix: '/v1/hazards' });
+  await app.register(adminRoutes, { prefix: '/v1/admin' });
 
   // Error handler — renders a typed JSON envelope.
   app.setErrorHandler((err, request, reply) => {
@@ -147,9 +154,6 @@ export const buildApp = async (): Promise<FastifyInstance> => {
       requestId: request.id,
     });
   });
-
-  // Expose JSON schema transformer (reserved for future OpenAPI route).
-  app.addSchema({ $id: 'transformer', ...jsonSchemaTransform });
 
   return app;
 };
