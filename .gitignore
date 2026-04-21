@@ -113,3 +113,12 @@ xcresult-bundle/
 node_modules/
 npm-debug.log*
 yarn-error.log
+pnpm-debug.log*
+.pnpm-store/
+
+## Backend build output ───────────────────────────────────────
+backend/dist/
+backend/coverage/
+backend/.env
+backend/.env.*
+!backend/.env.example

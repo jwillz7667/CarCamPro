@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Coverage + test artifacts
+coverage/
+.vitest/
+
+# Env + secrets
+.env
+.env.*
+!.env.example
+
+# Prisma local
+prisma/*.db
+prisma/*.db-journal
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Docker volumes (if mapped locally)
+.pgdata/
+.redisdata/
+.miniodata/

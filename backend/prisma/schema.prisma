@@ -1,0 +1,419 @@
+// ─────────────────────────────────────────────────────────────
+//  CarCam Pro — Prisma schema
+//
+//  Design notes:
+//    • Primary keys are ULIDs (generated app-side). Lexicographically
+//      sortable so indexes stay hot, URL-safe, no UUID churn.
+//    • Every "user-owned" row carries a `userId`. All queries must go
+//      through the row-level authorization helper in lib/auth.ts — never
+//      `prisma.clip.findUnique({ where: { id } })` bare.
+//    • Soft deletes via `deletedAt`. Hard deletion runs from a nightly
+//      job that also removes the S3 objects.
+//    • `@@index` clauses prioritize common access paths:
+//        - (userId, startedAt) for the trip list
+//        - (userId, isProtected, startedAt) for incident history
+//        - (userId, uploadedAt) for pending upload queue
+//        - Geohash for hazard queries (+ PostGIS for radial search)
+// ─────────────────────────────────────────────────────────────
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions", "relationJoins"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis, pgcrypto]
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Identity
+// ─────────────────────────────────────────────────────────────
+
+model User {
+  id                String    @id @db.VarChar(26) // ULID
+  /// Apple's stable "sub" claim from the identity token. Never PII.
+  applePrincipalId  String?   @unique @db.VarChar(128)
+  email             String?   @unique @db.VarChar(320)
+  emailVerifiedAt   DateTime?
+  displayName       String?   @db.VarChar(64)
+  avatarUrl         String?   @db.VarChar(512)
+  locale            String?   @db.VarChar(16)
+  timezone          String?   @db.VarChar(64)
+
+  subscriptionTier  SubscriptionTier @default(FREE)
+  storageQuotaBytes BigInt    @default(2147483648) // 2 GiB for FREE
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  lastActiveAt      DateTime?
+
+  sessions          Session[]
+  devices           Device[]
+  subscriptions     Subscription[]
+  clips             Clip[]
+  incidentReports   IncidentReport[]
+  hazardVotes       HazardVote[]
+  auditLogs         AuditLog[]
+
+  @@index([createdAt])
+  @@index([deletedAt])
+  @@map("users")
+}
+
+enum SubscriptionTier {
+  FREE
+  PRO
+  PREMIUM
+
+  @@map("subscription_tier")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Auth — sessions + refresh tokens
+// ─────────────────────────────────────────────────────────────
+
+/// One row per (user × device × login). Opaque refresh tokens are stored as
+/// SHA-256 hashes only. Rotation replaces the hash in place.
+model Session {
+  id                 String    @id @db.VarChar(26) // ULID
+  userId             String    @db.VarChar(26)
+  deviceId           String?   @db.VarChar(26)
+  refreshTokenHash   Bytes     @unique // sha256 of opaque token
+  /// Hash of the token that was rotated out. Detects reuse attacks —
+  /// presentation of an old hash invalidates the whole session.
+  previousTokenHash  Bytes?    @db.ByteA
+
+  userAgent          String?   @db.VarChar(256)
+  ipAddress          String?   @db.Inet
+
+  createdAt          DateTime  @default(now())
+  expiresAt          DateTime
+  lastUsedAt         DateTime  @default(now())
+  revokedAt          DateTime?
+  revokedReason      String?   @db.VarChar(128)
+
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device             Device?   @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Devices — push tokens + per-device state
+// ─────────────────────────────────────────────────────────────
+
+model Device {
+  id             String    @id @db.VarChar(26)
+  userId         String    @db.VarChar(26)
+  /// Apple-provided device identifier (APNs token or DeviceCheck).
+  apnsToken      String?   @unique @db.VarChar(256)
+  /// Human-readable label ("iPhone 16 Pro", "Jeep dashcam").
+  name           String    @db.VarChar(64)
+  model          String?   @db.VarChar(64)
+  osVersion      String?   @db.VarChar(32)
+  appVersion     String?   @db.VarChar(32)
+  appBuild       String?   @db.VarChar(32)
+
+  firstSeenAt    DateTime  @default(now())
+  lastSeenAt     DateTime  @default(now())
+  deletedAt      DateTime?
+
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessions       Session[]
+  clips          Clip[]
+
+  @@index([userId, lastSeenAt])
+  @@map("devices")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Subscriptions — StoreKit 2 (authoritative server state)
+// ─────────────────────────────────────────────────────────────
+
+model Subscription {
+  id                          String    @id @db.VarChar(26)
+  userId                      String    @db.VarChar(26)
+  /// `originalTransactionId` from Apple — stable across renewals.
+  appleOriginalTransactionId  String    @unique @db.VarChar(64)
+  /// Latest `transactionId` observed.
+  appleLatestTransactionId    String    @db.VarChar(64)
+  productId                   String    @db.VarChar(128)
+  tier                        SubscriptionTier
+
+  status                      SubscriptionStatus
+  environment                 AppleEnvironment
+
+  autoRenew                   Boolean   @default(true)
+
+  startedAt                   DateTime
+  currentPeriodEndsAt         DateTime
+  cancelledAt                 DateTime?
+  expiredAt                   DateTime?
+  gracePeriodEndsAt           DateTime?
+
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
+
+  user                        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions                SubscriptionTransaction[]
+
+  @@index([userId, status])
+  @@index([currentPeriodEndsAt])
+  @@map("subscriptions")
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  IN_GRACE_PERIOD
+  IN_BILLING_RETRY
+  EXPIRED
+  REVOKED
+  PAUSED
+
+  @@map("subscription_status")
+}
+
+enum AppleEnvironment {
+  Sandbox
+  Production
+
+  @@map("apple_environment")
+}
+
+/// Append-only log of every StoreKit transaction we've seen. Lets us
+/// reconstruct subscription state from first principles and audit disputes.
+model SubscriptionTransaction {
+  id                    String       @id @db.VarChar(26)
+  subscriptionId        String       @db.VarChar(26)
+  appleTransactionId    String       @unique @db.VarChar(64)
+  appleNotificationType String?      @db.VarChar(64)
+  appleSubtype          String?      @db.VarChar(64)
+  productId             String       @db.VarChar(128)
+  purchaseDate          DateTime
+  originalPurchaseDate  DateTime
+  /// Raw signed JWS payload (base64url). Keep for dispute resolution.
+  signedPayload         String       @db.Text
+
+  createdAt             DateTime     @default(now())
+
+  subscription          Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId, purchaseDate])
+  @@map("subscription_transactions")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Clips — recorded video + thumbnails
+// ─────────────────────────────────────────────────────────────
+
+model Clip {
+  id              String    @id @db.VarChar(26)
+  userId          String    @db.VarChar(26)
+  deviceId        String    @db.VarChar(26)
+
+  /// S3 object key (canonical, immutable once uploaded).
+  storageKey      String    @unique @db.VarChar(256)
+  /// Bytes reported by the client; re-verified server-side on completion.
+  sizeBytes       BigInt
+  /// Duration in seconds (float to preserve sub-second precision).
+  durationSeconds Float
+  resolution      String    @db.VarChar(16) // "720p" | "1080p" | "4K"
+  frameRate       Int
+  codec           String    @db.VarChar(16) // "HEVC" | "H.264"
+
+  startedAt       DateTime
+  endedAt         DateTime
+
+  isProtected     Boolean   @default(false)
+  protectionReason String?  @db.VarChar(64)
+
+  hasIncident       Boolean  @default(false)
+  incidentSeverity  String?  @db.VarChar(16) // minor|moderate|severe
+  peakGForce        Float?
+  incidentTimestamp DateTime?
+
+  startLatitude   Decimal?  @db.Decimal(9, 6)
+  startLongitude  Decimal?  @db.Decimal(9, 6)
+  endLatitude     Decimal?  @db.Decimal(9, 6)
+  endLongitude    Decimal?  @db.Decimal(9, 6)
+  averageSpeedMPH Float?
+
+  uploadStatus    UploadStatus @default(PENDING)
+  uploadedAt      DateTime?
+  uploadError     String?   @db.VarChar(256)
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device          Device    @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  thumbnail       ClipThumbnail?
+  incidentReport  IncidentReport?
+
+  @@index([userId, startedAt(sort: Desc)])
+  @@index([userId, isProtected, startedAt(sort: Desc)])
+  @@index([userId, uploadStatus])
+  @@index([userId, deletedAt])
+  @@map("clips")
+}
+
+enum UploadStatus {
+  PENDING
+  UPLOADING
+  UPLOADED
+  FAILED
+  PURGED
+
+  @@map("upload_status")
+}
+
+model ClipThumbnail {
+  id          String   @id @db.VarChar(26)
+  clipId      String   @unique @db.VarChar(26)
+  storageKey  String   @unique @db.VarChar(256)
+  sizeBytes   Int
+  widthPx     Int
+  heightPx    Int
+  createdAt   DateTime @default(now())
+
+  clip        Clip     @relation(fields: [clipId], references: [id], onDelete: Cascade)
+
+  @@map("clip_thumbnails")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Incident reports — rendered PDFs (Premium feature)
+// ─────────────────────────────────────────────────────────────
+
+model IncidentReport {
+  id            String   @id @db.VarChar(26)
+  userId        String   @db.VarChar(26)
+  clipId        String   @unique @db.VarChar(26)
+
+  pdfStorageKey String   @unique @db.VarChar(256)
+  sizeBytes    Int
+
+  /// Snapshot of the data used to render, so regenerating with fresh templates
+  /// reproduces the same output.
+  payloadJson  Json
+
+  generatedAt  DateTime @default(now())
+  deletedAt    DateTime?
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clip         Clip     @relation(fields: [clipId], references: [id], onDelete: Cascade)
+
+  @@index([userId, generatedAt(sort: Desc)])
+  @@map("incident_reports")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Hazard layer — anonymous, opt-in crowdsourced reports
+// ─────────────────────────────────────────────────────────────
+
+/// A single hazard sighting. Deliberately NOT tied to `userId` — the
+/// reporter's identity is k-anonymized at write time. `HazardVote` tracks
+/// which users have voted so we can prevent double-voting without linking
+/// the sighting back to any individual.
+model HazardSighting {
+  id          String        @id @db.VarChar(26)
+  type        HazardType
+  /// 9-character geohash — ~4.77m precision. Radial queries via PostGIS.
+  geohash     String        @db.VarChar(9)
+  /// Opaque reporter hash: HMAC(userId, dailySalt). Lets us rate-limit
+  /// without ever storing the user id against the row.
+  reporterHash Bytes        @db.ByteA
+  severity    Int           @default(2) // 1 = low, 2 = medium, 3 = high
+  /// Confidence score from 0…1 emitted by the on-device classifier.
+  confidence  Float
+
+  /// PostGIS POINT for spatial queries. Indexed with GIST.
+  location    Unsupported("geography(Point, 4326)")
+
+  upvotes     Int           @default(1)
+  downvotes   Int           @default(0)
+
+  expiresAt   DateTime      /// Sightings decay; default 2 hours.
+  createdAt   DateTime      @default(now())
+
+  votes       HazardVote[]
+
+  @@index([geohash])
+  @@index([type, expiresAt])
+  @@index([createdAt])
+  @@map("hazard_sightings")
+}
+
+enum HazardType {
+  EMERGENCY_VEHICLE
+  POLICE_STOP
+  ACCIDENT
+  ROAD_HAZARD
+  CONSTRUCTION
+  WEATHER
+
+  @@map("hazard_type")
+}
+
+/// Double-vote-prevention table. `userId` lives here but NEVER joins to
+/// `HazardSighting.reporterHash`. Any report-of-reporter leakage is caught
+/// in code review.
+model HazardVote {
+  id          String         @id @db.VarChar(26)
+  sightingId  String         @db.VarChar(26)
+  userId      String         @db.VarChar(26)
+  direction   Int            // +1 upvote, -1 downvote
+  createdAt   DateTime       @default(now())
+
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sighting    HazardSighting @relation(fields: [sightingId], references: [id], onDelete: Cascade)
+
+  @@unique([sightingId, userId])
+  @@index([userId])
+  @@map("hazard_votes")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Audit log — security-relevant events
+// ─────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id         BigInt    @id @default(autoincrement())
+  userId     String?   @db.VarChar(26)
+  action     String    @db.VarChar(64)
+  resource   String?   @db.VarChar(64)
+  resourceId String?   @db.VarChar(64)
+  ipAddress  String?   @db.Inet
+  userAgent  String?   @db.VarChar(256)
+  metaJson   Json?
+  createdAt  DateTime  @default(now())
+
+  user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([action, createdAt(sort: Desc)])
+  @@map("audit_logs")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Rotating daily salt for reporter-hash derivation
+//  (see HazardSighting.reporterHash)
+// ─────────────────────────────────────────────────────────────
+
+model DailySalt {
+  id        BigInt   @id @default(autoincrement())
+  /// "YYYY-MM-DD" — enforces one salt per UTC day.
+  dayKey    String   @unique @db.VarChar(10)
+  salt      Bytes    @db.ByteA
+  createdAt DateTime @default(now())
+
+  @@map("daily_salts")
+}
