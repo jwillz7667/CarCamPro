@@ -1,47 +1,228 @@
 import SwiftUI
 import AVFoundation
 
-/// LIVE tab — full-bleed camera preview in landscape with a comprehensive HUD
-/// (matches `LiveCamView` + `LiveHUD` from the mockup). Locks to landscape via
-/// a UIHostingController wrapper so system rotation isn't required.
+/// LIVE tab — full-bleed camera preview with a minimal Liquid Glass overlay.
+///
+/// Only the controls a driver actually needs while moving:
+///   - A single REC + timecode pill at the top (status, glanceable).
+///   - A speed pill in the opposite corner (optional, driven by GPS).
+///   - Three floating glass controls at the bottom:
+///     flip-camera · REC / STOP shutter · LOCK clip.
+///
+/// Everything else from earlier iterations (velocity gauge, G-force target,
+/// horizon, heading/altitude, coordinate labels) has been moved off this
+/// screen. Those readouts live on the Home dashboard + incident playback.
 struct LiveCamView: View {
     @Environment(DependencyContainer.self) private var container
-    @Binding var activeTab: CCTab
 
-    @State private var hud = LiveHUDState()
     @State private var authorized = false
     @State private var permissionChecked = false
-    @State private var gForceTask: Task<Void, Never>?
+    @State private var currentSpeedMPH: Int?
 
     var body: some View {
         ZStack {
-            CCTheme.void.ignoresSafeArea()
+            Color.black.ignoresSafeArea()
 
             if authorized {
                 CameraPreviewView(session: container.cameraService.captureSession)
                     .ignoresSafeArea()
-                    .overlay(ScanLine())
-                    .overlay(LiveHUDOverlay(hud: hud,
-                                            isRecording: container.recordingEngine.state.isRecording,
-                                            duration: container.recordingEngine.formattedDuration,
-                                            onLock: lockCurrent,
-                                            onStop: stopRecording))
             } else if permissionChecked {
                 cameraDeniedView
             } else {
-                ProgressView().tint(.white)
+                ProgressView()
+                    .controlSize(.large)
+                    .tint(.white)
+            }
+
+            if authorized {
+                DetectionOverlayView()
+                    .ignoresSafeArea()
+                overlay
             }
         }
+        .statusBarHidden()
+        .persistentSystemOverlays(.hidden)
         .task { await setupCamera() }
-        .task(id: container.recordingEngine.state.isRecording) {
-            await observeGForce()
-        }
-        .onDisappear {
-            gForceTask?.cancel()
+        .onChange(of: container.recordingEngine.state.isRecording) { _, isOn in
+            if isOn {
+                container.settingsCoordinator?.applyDisplayDimming()
+            } else {
+                container.settingsCoordinator?.restoreDisplay()
+            }
         }
     }
 
-    // MARK: - Setup
+    // MARK: - Overlay
+
+    private var overlay: some View {
+        VStack(spacing: 0) {
+            topBar
+                .padding(.horizontal, CCTheme.Space.lg)
+                .padding(.top, CCTheme.Space.sm)
+
+            Spacer(minLength: 0)
+
+            bottomControls
+                .padding(.horizontal, CCTheme.Space.lg)
+                .padding(.bottom, CCTheme.Space.xl)
+        }
+    }
+
+    private var topBar: some View {
+        HStack(alignment: .top) {
+            if container.recordingEngine.state.isRecording {
+                recPill
+                    .transition(.scale.combined(with: .opacity))
+            }
+            Spacer()
+            if let speed = currentSpeedMPH {
+                speedPill(speed)
+                    .transition(.scale.combined(with: .opacity))
+            }
+        }
+        .animation(.snappy, value: container.recordingEngine.state.isRecording)
+        .animation(.snappy, value: currentSpeedMPH)
+    }
+
+    private var recPill: some View {
+        GlassStatusPill {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(CCTheme.red)
+                    .frame(width: 8, height: 8)
+                    .symbolEffect(.pulse, options: .repeating)
+                Text("REC")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(CCTheme.red)
+                Text(container.recordingEngine.formattedDuration)
+                    .font(CCFont.mono(15, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundStyle(.white)
+                    .contentTransition(.numericText(countsDown: false))
+                    .animation(.default, value: container.recordingEngine.currentDuration)
+            }
+        }
+    }
+
+    private func speedPill(_ mph: Int) -> some View {
+        GlassStatusPill {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text("\(mph)")
+                    .font(CCFont.mono(20, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(.white)
+                Text("mph")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.7))
+            }
+        }
+    }
+
+    private var bottomControls: some View {
+        HStack {
+            GlassIconButton(systemImage: "camera.rotate", size: 52) {
+                flipCamera()
+            }
+
+            Spacer()
+
+            shutterButton
+
+            Spacer()
+
+            GlassIconButton(
+                systemImage: "lock.fill",
+                size: 52,
+                style: .tinted(CCTheme.amber)
+            ) {
+                lockClip()
+            }
+            .disabled(!container.recordingEngine.state.isRecording)
+            .opacity(container.recordingEngine.state.isRecording ? 1 : 0.4)
+        }
+    }
+
+    /// Centered shutter — white ring + red inner circle, transforms to a red
+    /// stop-square while recording. Pure SwiftUI, no glyphs, no letter spacing.
+    private var shutterButton: some View {
+        Button(action: toggleRecording) {
+            ZStack {
+                Circle()
+                    .stroke(.white.opacity(0.95), lineWidth: 4)
+                    .frame(width: 78, height: 78)
+
+                if container.recordingEngine.state.isRecording {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(CCTheme.red)
+                        .frame(width: 34, height: 34)
+                        .transition(.scale.combined(with: .opacity))
+                } else {
+                    Circle()
+                        .fill(CCTheme.red)
+                        .frame(width: 64, height: 64)
+                        .transition(.scale.combined(with: .opacity))
+                }
+            }
+            .frame(width: 84, height: 84)
+        }
+        .buttonStyle(.plain)
+        .sensoryFeedback(.impact(weight: .heavy),
+                         trigger: container.recordingEngine.state.isRecording)
+        .animation(.snappy, value: container.recordingEngine.state.isRecording)
+    }
+
+    // MARK: - Camera permission denied
+
+    private var cameraDeniedView: some View {
+        VStack(spacing: CCTheme.Space.lg) {
+            Image(systemName: "video.slash.fill")
+                .font(.system(size: 42, weight: .medium))
+                .foregroundStyle(.white.opacity(0.7))
+
+            Text("Camera access required")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.white)
+
+            Text("Enable camera access in Settings to record driving footage.")
+                .font(.body)
+                .foregroundStyle(.white.opacity(0.75))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, CCTheme.Space.xl)
+
+            GlassPillButton(style: .prominent, action: openSettings) {
+                Text("Open Settings")
+            }
+        }
+    }
+
+    // MARK: - Actions
+
+    private func toggleRecording() {
+        Task {
+            if container.recordingEngine.state.isRecording {
+                try? await container.recordingEngine.stopRecording()
+            } else {
+                try? await container.recordingEngine.startRecording()
+            }
+        }
+    }
+
+    private func flipCamera() {
+        let next: CameraPosition = container.settings.selectedCamera == .backWide ? .front : .backWide
+        Task { await container.settingsCoordinator?.setSelectedCamera(next) }
+    }
+
+    private func lockClip() {
+        Task { await container.recordingEngine.protectCurrentClip() }
+    }
+
+    private func openSettings() {
+        if let url = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(url)
+        }
+    }
+
+    // MARK: - Camera setup
 
     private func setupCamera() async {
         let ok = await CameraService.checkAuthorization()
@@ -54,107 +235,16 @@ struct LiveCamView: View {
             try? await container.cameraService.startCapture()
         }
 
-        // Pipe location samples into the HUD every time they update.
         container.locationService.onUpdate { sample in
-            updateHUD(from: sample)
-        }
-        if let last = container.locationService.lastSample {
-            updateHUD(from: last)
-        }
-    }
-
-    private func updateHUD(from sample: LocationSample) {
-        if let mph = sample.speedMPH {
-            hud.speedMPH = max(0, mph)
-        }
-        if sample.courseDegrees >= 0 {
-            hud.heading = sample.courseDegrees
-            hud.compass = sample.compass ?? ""
-        }
-        hud.altitudeFeet = Int(sample.altitudeMeters * 3.28084)
-        hud.coordinateLabel = String(format: "%.4f° %@ · %.4f° %@",
-                                     abs(sample.latitude),
-                                     sample.latitude >= 0 ? "N" : "S",
-                                     abs(sample.longitude),
-                                     sample.longitude >= 0 ? "E" : "W")
-        hud.currentBufferSeconds = container.recordingEngine.currentDuration
-    }
-
-    private func observeGForce() async {
-        gForceTask?.cancel()
-        gForceTask = Task { @MainActor in
-            let stream = await container.incidentDetector.liveGForce()
-            for await sample in stream {
-                guard !Task.isCancelled else { break }
-                hud.totalG = sample.total
-                hud.peakG = max(hud.peakG, sample.total)
-                hud.gAxisX = sample.x
-                hud.gAxisY = sample.y
+            if let mph = sample.speedMPH, mph >= 1 {
+                currentSpeedMPH = Int(mph.rounded())
+            } else {
+                currentSpeedMPH = nil
             }
         }
-    }
-
-    // MARK: - Actions
-
-    private func lockCurrent() {
-        Task { await container.recordingEngine.protectCurrentClip() }
-    }
-
-    private func stopRecording() {
-        Task {
-            try? await container.recordingEngine.stopRecording()
-            activeTab = .home
+        if let last = container.locationService.lastSample,
+           let mph = last.speedMPH, mph >= 1 {
+            currentSpeedMPH = Int(mph.rounded())
         }
-    }
-
-    // MARK: - Views
-
-    private var cameraDeniedView: some View {
-        VStack(spacing: 20) {
-            ApertureMark(size: 48, color: CCTheme.amber)
-            Text("Camera Access Required")
-                .font(CCFont.display(22, weight: .regular))
-                .foregroundStyle(CCTheme.ink)
-            Text("Enable camera access in Settings to record driving footage.")
-                .font(CCFont.sans(14))
-                .foregroundStyle(CCTheme.ink3)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-            Button("OPEN SETTINGS") {
-                if let url = URL(string: UIApplication.openSettingsURLString) {
-                    UIApplication.shared.open(url)
-                }
-            }
-            .font(CCFont.mono(11, weight: .medium))
-            .kerning(2.2)
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
-            .overlay(Rectangle().stroke(CCTheme.ruleHi, lineWidth: 1))
-            .foregroundStyle(CCTheme.ink)
-            .padding(.top, 8)
-        }
-    }
-}
-
-/// Subtle amber scan line, sweeping top→bottom. Purely cosmetic (matches mock).
-private struct ScanLine: View {
-    @State private var offset: CGFloat = -1.0
-
-    var body: some View {
-        GeometryReader { geo in
-            LinearGradient(
-                colors: [.clear, CCTheme.amber.opacity(0.07), .clear],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: 60)
-            .offset(y: offset * (geo.size.height + 60))
-            .onAppear {
-                withAnimation(.linear(duration: 6).repeatForever(autoreverses: false)) {
-                    offset = 2.0
-                }
-            }
-        }
-        .allowsHitTesting(false)
     }
 }

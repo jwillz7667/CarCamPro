@@ -1,8 +1,9 @@
 import SwiftUI
 import CoreMotion
 
-/// Step 3 — horizon / mount calibration. Shows live pitch + roll from
-/// Core Motion; user taps Save once the indicators read ~0°.
+/// Step 3 — horizon / mount calibration. Live pitch + roll readings from
+/// Core Motion drive a rounded "bubble level" target; the user taps
+/// continue once the bubble centers.
 struct OnboardingCalibrationView: View {
     let onContinue: () -> Void
     let onSkip: () -> Void
@@ -18,60 +19,57 @@ struct OnboardingCalibrationView: View {
 
     var body: some View {
         OnboardingFrame(step: 3) {
-            VStack(alignment: .leading, spacing: 0) {
-                CCLabel("03 — Calibration", size: 10, color: CCTheme.amber)
-                    .padding(.bottom, 8)
+            OnboardingTitle(
+                eyebrow: "Calibration",
+                title: "Level your mount",
+                subtitle: "Place the phone in landscape on your windshield and hold it still. The bubble will center when the horizon is level."
+            )
 
-                Text("Level your mount.")
-                    .font(CCFont.display(30, weight: .light))
-                    .kerning(-0.6)
-                    .foregroundStyle(CCTheme.ink)
-                    .padding(.bottom, 12)
+            BubbleLevelCard(pitch: pitch, roll: roll, isLevel: isLevel)
 
-                Text("Place phone in landscape on the windshield. Hold still.")
-                    .font(CCFont.sans(13))
-                    .foregroundStyle(CCTheme.ink3)
-                    .padding(.bottom, 28)
-
-                HorizonCalibrator(
-                    pitch: pitch,
-                    roll: roll,
-                    adjusting: !isLevel
-                )
-                .aspectRatio(1, contentMode: .fit)
-
-                guidanceHint
-                    .padding(.top, 24)
-
-                Spacer(minLength: 24)
-
-                OnboardingButton(title: "Save calibration", primary: true) {
-                    stop()
-                    onContinue()
-                }
-
-                OnboardingButton(title: "Skip for now") {
-                    stop()
-                    onSkip()
-                }
-                .padding(.top, 8)
+            hint
+        } footer: {
+            OnboardingPrimaryButton(title: isLevel ? "Save & Continue" : "Continue Anyway") {
+                stop()
+                onContinue()
             }
-            .padding(.horizontal, 28)
-            .padding(.top, 110)
-            .padding(.bottom, 90)
+            OnboardingSecondaryButton(title: "Skip") {
+                stop()
+                onSkip()
+            }
         }
         .task { startMotion() }
         .onDisappear { stop() }
     }
 
-    // MARK: - Motion loop
+    private var hint: some View {
+        HStack(spacing: CCTheme.Space.md) {
+            Image(systemName: isLevel ? "checkmark.seal.fill" : "arrow.triangle.2.circlepath")
+                .font(.title3)
+                .foregroundStyle(isLevel ? CCTheme.green : CCTheme.accent)
+
+            Text(isLevel
+                 ? "Looks level. You're good to go."
+                 : (roll > 0
+                    ? "Rotate the phone counter-clockwise \(String(format: "%.1f", abs(roll)))°"
+                    : "Rotate the phone clockwise \(String(format: "%.1f", abs(roll)))°"))
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            Spacer()
+        }
+        .padding(CCTheme.Space.md)
+        .background(
+            RoundedRectangle(cornerRadius: CCTheme.radiusLarge, style: .continuous)
+                .fill(Color(.secondarySystemGroupedBackground))
+        )
+    }
 
     private func startMotion() {
         guard !isLive, motionManager.isDeviceMotionAvailable else { return }
         motionManager.deviceMotionUpdateInterval = 1.0 / 30
         motionManager.startDeviceMotionUpdates(to: .main) { motion, _ in
             guard let m = motion else { return }
-            // attitude.pitch / .roll are in radians — convert to degrees.
             pitch = m.attitude.pitch * 180.0 / .pi
             roll  = m.attitude.roll  * 180.0 / .pi
         }
@@ -83,101 +81,89 @@ struct OnboardingCalibrationView: View {
         motionManager.stopDeviceMotionUpdates()
         isLive = false
     }
-
-    // MARK: - Hint
-
-    private var guidanceHint: some View {
-        HStack(alignment: .top, spacing: 0) {
-            Rectangle().fill(CCTheme.amber).frame(width: 2)
-            let rollMsg = roll > 0 ? "COUNTER-CLOCKWISE" : "CLOCKWISE"
-            let message = isLevel
-                ? "HORIZON LEVEL. MOUNT READY."
-                : "ROTATE PHONE \(rollMsg) \(String(format: "%.1f", abs(roll)))° TO LEVEL HORIZON."
-            Text(message)
-                .font(CCFont.mono(11, weight: .regular))
-                .kerning(0.8)
-                .foregroundStyle(CCTheme.ink2)
-                .padding(14)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .overlay(Rectangle().stroke(CCTheme.ruleHi, lineWidth: 1))
-    }
 }
 
-/// Horizon + bubble level widget driven by live pitch/roll values.
-struct HorizonCalibrator: View {
+private struct BubbleLevelCard: View {
     let pitch: Double
     let roll: Double
-    let adjusting: Bool
+    let isLevel: Bool
 
     var body: some View {
-        GeometryReader { geo in
-            let size = min(geo.size.width, geo.size.height)
+        ZStack {
+            RoundedRectangle(cornerRadius: CCTheme.radiusLarge, style: .continuous)
+                .fill(Color(.secondarySystemGroupedBackground))
 
-            ZStack {
-                // Outer rect + crosshair
-                Rectangle().stroke(CCTheme.rule, lineWidth: 1)
+            GeometryReader { geo in
+                let size = min(geo.size.width, geo.size.height)
+                ZStack {
+                    // Target rings
+                    Circle()
+                        .strokeBorder(Color(.separator), lineWidth: 1)
+                        .frame(width: size * 0.75, height: size * 0.75)
+                    Circle()
+                        .strokeBorder(Color(.separator), lineWidth: 1)
+                        .frame(width: size * 0.45, height: size * 0.45)
+                    Circle()
+                        .strokeBorder(CCTheme.accent.opacity(0.4), lineWidth: 1)
+                        .frame(width: size * 0.18, height: size * 0.18)
 
-                Circle()
-                    .fill(RadialGradient(
-                        colors: [CCTheme.panelHi, CCTheme.void],
-                        center: .center,
-                        startRadius: 0,
-                        endRadius: size * 0.5
-                    ))
-                    .frame(width: size, height: size)
+                    // Crosshair
+                    Rectangle()
+                        .fill(Color(.separator))
+                        .frame(width: size * 0.75, height: 1)
+                    Rectangle()
+                        .fill(Color(.separator))
+                        .frame(width: 1, height: size * 0.75)
 
-                CCCrosshair(color: CCTheme.amber, size: 14)
-
-                // grid
-                Rectangle().fill(CCTheme.rule).frame(height: 1)
-                Rectangle().fill(CCTheme.rule).frame(width: 1)
-
-                // Tilted horizon
-                Rectangle()
-                    .fill(CCTheme.amber)
-                    .frame(width: size * 0.8, height: 1)
-                    .rotationEffect(.degrees(-roll))
-
-                // Bubble level
-                Circle()
-                    .stroke(CCTheme.amber, lineWidth: 1)
-                    .frame(width: 28, height: 28)
-                    .shadow(color: CCTheme.amber.opacity(0.7), radius: 6)
-                    .offset(
-                        x: clamped(roll, to: -20...20) * (size / 60),
-                        y: clamped(pitch, to: -20...20) * (size / 60)
-                    )
-
-                // Angle readouts
-                VStack {
-                    Spacer()
-                    HStack(alignment: .bottom) {
-                        axisReadout(label: "PITCH", value: pitch, color: CCTheme.ink)
-                            .padding(.trailing, 16)
-                        axisReadout(label: "ROLL", value: roll,
-                                    color: abs(roll) > 1.5 ? CCTheme.amber : CCTheme.ink)
-                        Spacer()
-                        CCLabel(adjusting ? "ADJUSTING…" : "READY",
-                                size: 9,
-                                color: adjusting ? CCTheme.amber : CCTheme.green)
-                    }
-                    .padding(12)
+                    // Bubble
+                    Circle()
+                        .fill(isLevel ? CCTheme.green : CCTheme.accent)
+                        .frame(width: 22, height: 22)
+                        .shadow(color: (isLevel ? CCTheme.green : CCTheme.accent).opacity(0.7),
+                                radius: 8)
+                        .offset(
+                            x: clamped(roll, to: -20...20) * (size / 80),
+                            y: clamped(pitch, to: -20...20) * (size / 80)
+                        )
+                        .animation(.spring(response: 0.25, dampingFraction: 0.8),
+                                   value: roll)
+                        .animation(.spring(response: 0.25, dampingFraction: 0.8),
+                                   value: pitch)
                 }
+                .frame(width: geo.size.width, height: geo.size.height)
             }
+            .padding(CCTheme.Space.lg)
+
+            VStack {
+                Spacer()
+                readouts
+                    .padding(CCTheme.Space.md)
+            }
+        }
+        .frame(height: 280)
+    }
+
+    private var readouts: some View {
+        HStack {
+            readoutColumn(label: "Pitch", value: pitch, highlight: false)
+            Spacer()
+            readoutColumn(label: "Roll", value: roll, highlight: abs(roll) > 1.5)
+        }
+    }
+
+    private func readoutColumn(label: String, value: Double, highlight: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+            Text(String(format: "%+.1f°", value))
+                .font(CCFont.mono(16, weight: .semibold))
+                .monospacedDigit()
+                .foregroundStyle(highlight ? CCTheme.accent : .primary)
         }
     }
 
     private func clamped(_ v: Double, to range: ClosedRange<Double>) -> Double {
         min(max(v, range.lowerBound), range.upperBound)
-    }
-
-    private func axisReadout(label: String, value: Double, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            CCLabel(label, size: 9, color: CCTheme.ink4)
-            Text(String(format: "%+.1f°", value))
-                .font(CCFont.mono(16, weight: .regular))
-                .foregroundStyle(color)
-        }
     }
 }

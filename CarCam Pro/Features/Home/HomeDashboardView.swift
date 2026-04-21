@@ -1,128 +1,233 @@
 import SwiftUI
 import SwiftData
 
-/// HOME tab — editorial "minimal" variant of the dashboard (see `DashboardMinimal`
-/// in the Claude Design handoff). Focuses on this-week telemetry + a prominent
-/// REC action. Routes the user into the landscape live HUD on tap.
+/// HOME tab — the app's "lock screen". Summarizes armed/idle status,
+/// this-week stats, the last trip, and hosts the primary REC floating action.
+///
+/// Everything lives inside a native `NavigationStack` with an inset-grouped
+/// `List`. Cards are rounded rects filled with `systemGroupedBackground`,
+/// and the REC button floats as a Liquid Glass pill anchored to the
+/// bottom — exactly the pattern Apple uses in Reminders' "New Reminder".
 struct HomeDashboardView: View {
     @Environment(DependencyContainer.self) private var container
     @Environment(\.modelContext) private var modelContext
 
     @State private var viewModel = HomeViewModel()
-    @Binding var activeTab: CCTab
 
     var body: some View {
-        ZStack {
-            CCTheme.void.ignoresSafeArea()
-
-            VStack(spacing: 0) {
-                CCTopBar {
-                    CCArmedIndicator(
-                        armed: container.recordingEngine.state.isIdle ? false : true,
-                        storageFree: storageFreeLabel
-                    )
+        NavigationStack {
+            ZStack(alignment: .bottom) {
+                List {
+                    statusSection
+                    weeklySection
+                    statsSection
+                    lastTripSection
                 }
+                .listStyle(.insetGrouped)
+                .contentMargins(.bottom, 120, for: .scrollContent)
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        header
-                            .padding(.horizontal, 24)
-                            .padding(.top, 36)
-
-                        weeklyBlock
-                            .padding(.horizontal, 24)
-                            .padding(.top, 18)
-                            .padding(.bottom, 18)
-
-                        quickStatsBlock
-                            .padding(.horizontal, 24)
-                            .padding(.bottom, 24)
-                    }
+                floatingRecordButton
+            }
+            .navigationTitle("Dashboard")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    armedChip
                 }
-
-                recordButton
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 12)
             }
         }
         .onAppear { viewModel.refresh(context: modelContext) }
     }
 
-    // MARK: - Header block
+    // MARK: - Status section
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            CCLabel("TODAY — \(viewModel.todayDate)", size: 10, color: CCTheme.ink4)
+    private var statusSection: some View {
+        Section {
+            HStack(spacing: CCTheme.Space.md) {
+                Image(systemName: isRecording ? "record.circle.fill" : "checkmark.seal.fill")
+                    .font(.title.weight(.semibold))
+                    .foregroundStyle(isRecording ? CCTheme.red : CCTheme.green)
+                    .symbolEffect(.pulse, options: .repeating, isActive: isRecording)
+                    .frame(width: 44)
 
-            Text(headline.title)
-                .font(CCFont.display(44, weight: .light))
-                .kerning(-1.3)
-                .foregroundStyle(CCTheme.ink)
-                .lineSpacing(-4)
-
-            Text(headline.subtitle)
-                .font(CCFont.sans(14))
-                .foregroundStyle(CCTheme.ink3)
-                .padding(.top, 4)
-        }
-    }
-
-    private var headline: (title: String, subtitle: String) {
-        if container.recordingEngine.state.isRecording {
-            return ("Recording\nin progress.", "Tap LIVE to view the dashboard HUD.")
-        }
-        if let last = viewModel.lastTrip {
-            return (
-                "Ready to\nrecord.",
-                "Last trip ended \(last.minutesAgo) min ago at \(last.endLocation)."
-            )
-        }
-        return ("Ready to\nrecord.", "Drive safely. CarCam is armed and ready.")
-    }
-
-    // MARK: - Weekly block
-
-    private var weeklyBlock: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Rectangle().fill(CCTheme.rule).frame(height: 1)
-                .padding(.bottom, 18)
-
-            HStack {
-                CCLabel("THIS WEEK", size: 9, color: CCTheme.ink4)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(isRecording ? "Recording" : "Armed")
+                        .font(.title3.weight(.semibold))
+                    Text(isRecording
+                         ? "Tap Live to review the HUD"
+                         : "Sensors online. CarCam is ready when you are.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
                 Spacer()
-                CCLabel(deltaLabel, size: 9, color: CCTheme.ink4)
             }
+            .padding(.vertical, 4)
+        }
+    }
 
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(milesFormatted)
-                    .font(CCFont.mono(64, weight: .thin))
-                    .kerning(-2.5)
-                    .foregroundStyle(CCTheme.ink)
-                    .monospacedDigit()
-                Text("MI")
-                    .font(CCFont.mono(18))
-                    .foregroundStyle(CCTheme.ink4)
+    // MARK: - Weekly section
+
+    private var weeklySection: some View {
+        Section("This Week") {
+            VStack(alignment: .leading, spacing: CCTheme.Space.md) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(milesFormatted)
+                        .font(CCFont.rounded(48, weight: .bold))
+                        .monospacedDigit()
+                        .contentTransition(.numericText())
+                    Text("mi")
+                        .font(.title2.weight(.medium))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    deltaLabel
+                }
+
+                Sparkline(bars: viewModel.weeklySummary.dailyMileBars,
+                          activeIndex: viewModel.weeklySummary.activeDayIndex)
+                    .frame(height: 44)
+
+                dayStrip
             }
-            .padding(.top, 12)
+            .padding(.vertical, 8)
+        }
+    }
 
-            Sparkline(bars: viewModel.weeklySummary.dailyMileBars,
-                      activeIndex: viewModel.weeklySummary.activeDayIndex)
-                .frame(height: 32)
-                .padding(.top, 14)
-
-            HStack {
-                let dayLetters = ["M","T","W","T","F","S","S"]
-                ForEach(Array(dayLetters.enumerated()), id: \.offset) { idx, letter in
-                    CCLabel(
-                        letter,
-                        size: 9,
-                        color: idx == viewModel.weeklySummary.activeDayIndex ? CCTheme.amber : CCTheme.ink4
-                    )
+    private var dayStrip: some View {
+        let letters = ["M", "T", "W", "T", "F", "S", "S"]
+        return HStack {
+            ForEach(Array(letters.enumerated()), id: \.offset) { idx, letter in
+                Text(letter)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(idx == viewModel.weeklySummary.activeDayIndex
+                                     ? CCTheme.accent : .secondary)
                     .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    private var deltaLabel: some View {
+        let pct = viewModel.weeklySummary.vsLastWeekPct
+        let text: String
+        let color: Color
+        if pct == 0 {
+            text = "—"
+            color = .secondary
+        } else if pct > 0 {
+            text = String(format: "+%.0f%%", pct)
+            color = CCTheme.green
+        } else {
+            text = String(format: "%.0f%%", pct)
+            color = CCTheme.red
+        }
+        return Text(text)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(color)
+    }
+
+    // MARK: - Stats section
+
+    private var statsSection: some View {
+        Section("At a Glance") {
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())],
+                      spacing: CCTheme.Space.md) {
+                statCard(systemImage: "car.fill", label: "Trips", value: String(viewModel.quickStats.trips))
+                statCard(systemImage: "lock.fill", label: "Locked", value: String(viewModel.quickStats.clipsLocked))
+                statCard(systemImage: "gauge.with.dots.needle.bottom.50percent", label: "Top Speed", value: "\(viewModel.quickStats.topSpeedMPH) mph")
+                statCard(systemImage: "exclamationmark.triangle.fill", label: "Incidents", value: String(viewModel.quickStats.incidents))
+            }
+            .padding(.vertical, 4)
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+        }
+    }
+
+    private func statCard(systemImage: String, label: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Image(systemName: systemImage)
+                .font(.title2)
+                .foregroundStyle(CCTheme.accent)
+            Text(value)
+                .font(.title2.weight(.semibold))
+                .monospacedDigit()
+            Text(label)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(CCTheme.Space.md)
+        .background(
+            RoundedRectangle(cornerRadius: CCTheme.radiusCard, style: .continuous)
+                .fill(Color(.secondarySystemGroupedBackground))
+        )
+    }
+
+    // MARK: - Last trip
+
+    @ViewBuilder
+    private var lastTripSection: some View {
+        if let trip = viewModel.lastTrip {
+            Section("Last Trip") {
+                HStack(spacing: CCTheme.Space.md) {
+                    Image(systemName: "clock.fill")
+                        .font(.title3)
+                        .foregroundStyle(CCTheme.accent)
+                        .frame(width: 32)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Ended \(trip.minutesAgo) min ago")
+                            .font(.body.weight(.medium))
+                        Text(trip.endLocation)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+                .padding(.vertical, 4)
+            }
+        }
+    }
+
+    // MARK: - Floating REC button
+
+    private var floatingRecordButton: some View {
+        HStack {
+            Spacer()
+
+            GlassPillButton(
+                style: isRecording ? .destructive : .prominent,
+                action: toggleRecording
+            ) {
+                HStack(spacing: 10) {
+                    Image(systemName: isRecording ? "stop.circle.fill" : "record.circle.fill")
+                        .font(.title3)
+                    Text(isRecording ? "Stop Recording" : "Start Recording")
                 }
             }
-            .padding(.top, 6)
+            .frame(minWidth: 220)
+            .shadow(color: .black.opacity(0.35), radius: 18, x: 0, y: 8)
+
+            Spacer()
         }
+        .padding(.bottom, CCTheme.Space.lg)
+    }
+
+    // MARK: - Toolbar armed chip
+
+    private var armedChip: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(isRecording ? CCTheme.red : CCTheme.green)
+                .frame(width: 8, height: 8)
+                .symbolEffect(.pulse, options: .repeating, isActive: isRecording)
+            Text(isRecording ? "REC" : "Armed")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: - Helpers
+
+    private var isRecording: Bool {
+        container.recordingEngine.state.isRecording
     }
 
     private var milesFormatted: String {
@@ -132,104 +237,30 @@ struct HomeDashboardView: View {
         return String(format: "%.1f", viewModel.weeklySummary.miles)
     }
 
-    private var deltaLabel: String {
-        let pct = viewModel.weeklySummary.vsLastWeekPct
-        if pct == 0 { return "VS LAST WEEK —" }
-        return String(format: "%+.0f%% VS LAST", pct)
-    }
-
-    // MARK: - Quick stats 2x2
-
-    private var quickStatsBlock: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Rectangle().fill(CCTheme.rule).frame(height: 1)
-
-            let rows: [[(String, String)]] = [
-                [("TRIPS", String(viewModel.quickStats.trips)),
-                 ("CLIPS LOCKED", String(viewModel.quickStats.clipsLocked))],
-                [("TOP SPEED", String(viewModel.quickStats.topSpeedMPH)),
-                 ("INCIDENTS", String(viewModel.quickStats.incidents))],
-            ]
-
-            ForEach(0..<rows.count, id: \.self) { rowIdx in
-                HStack(spacing: 20) {
-                    ForEach(0..<rows[rowIdx].count, id: \.self) { colIdx in
-                        statCell(label: rows[rowIdx][colIdx].0,
-                                 value: rows[rowIdx][colIdx].1)
-                    }
-                }
-                .padding(.vertical, 18)
+    private func toggleRecording() {
+        Task {
+            if isRecording {
+                try? await container.recordingEngine.stopRecording()
+            } else {
+                try? await container.recordingEngine.startRecording()
             }
         }
-    }
-
-    private func statCell(label: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            CCLabel(label, size: 9, color: CCTheme.ink4)
-            Text(value)
-                .font(CCFont.mono(28, weight: .light))
-                .kerning(-0.5)
-                .foregroundStyle(CCTheme.ink)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    // MARK: - REC button
-
-    private var recordButton: some View {
-        Button {
-            Task {
-                if container.recordingEngine.state.isRecording {
-                    try? await container.recordingEngine.stopRecording()
-                } else {
-                    try? await container.recordingEngine.startRecording()
-                    activeTab = .live
-                }
-            }
-        } label: {
-            HStack(spacing: 14) {
-                Circle()
-                    .fill(CCTheme.red)
-                    .frame(width: 10, height: 10)
-                Text(container.recordingEngine.state.isRecording ? "Stop recording" : "Start recording")
-                    .font(CCFont.mono(13, weight: .medium))
-                    .kerning(3.25)
-                    .textCase(.uppercase)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 22)
-            .foregroundStyle(CCTheme.void)
-            .background(CCTheme.amber)
-        }
-        .buttonStyle(.plain)
-        .sensoryFeedback(.impact(weight: .heavy), trigger: container.recordingEngine.state.isRecording)
-    }
-
-    // MARK: - Helpers
-
-    private var storageFreeLabel: String {
-        let url = URL(fileURLWithPath: NSHomeDirectory())
-        if let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]),
-           let bytes = values.volumeAvailableCapacityForImportantUsage {
-            let gb = Double(bytes) / 1_073_741_824
-            return String(format: "%.1f GB", gb)
-        }
-        return "—"
     }
 }
 
-/// 7-bar sparkline. Today's bar is drawn in amber.
+// MARK: - Sparkline
+
 private struct Sparkline: View {
     let bars: [Double]
     let activeIndex: Int
 
     var body: some View {
         GeometryReader { geo in
-            HStack(alignment: .bottom, spacing: 6) {
+            HStack(alignment: .bottom, spacing: 8) {
                 ForEach(Array(bars.enumerated()), id: \.offset) { idx, v in
-                    Rectangle()
-                        .fill(idx == activeIndex ? CCTheme.amber : CCTheme.ruleHi)
-                        .frame(height: max(2, geo.size.height * CGFloat(v) / 30))
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(idx == activeIndex ? CCTheme.accent : Color(.tertiarySystemFill))
+                        .frame(height: max(4, geo.size.height * CGFloat(v) / 30))
                         .frame(maxWidth: .infinity)
                 }
             }

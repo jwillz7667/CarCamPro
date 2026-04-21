@@ -304,6 +304,10 @@ extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegate, AVCapture
     ) {
         if output is AVCaptureVideoDataOutput {
             sampleDelegate?.didOutputVideoSampleBuffer(sampleBuffer)
+            // Hand the same buffer to the police-detection subsystem; it
+            // self-throttles and drops frames if still busy, so this is safe
+            // to call on every video frame.
+            PoliceDetectionSystem.shared.processFrame(sampleBuffer: sampleBuffer)
         } else if output is AVCaptureAudioDataOutput {
             sampleDelegate?.didOutputAudioSampleBuffer(sampleBuffer)
         }

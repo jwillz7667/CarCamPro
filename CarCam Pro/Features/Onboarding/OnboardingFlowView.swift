@@ -9,7 +9,7 @@ struct OnboardingFlowView: View {
 
     var body: some View {
         ZStack {
-            CCTheme.void.ignoresSafeArea()
+            Color(.systemGroupedBackground).ignoresSafeArea()
 
             switch state.step {
             case .welcome:

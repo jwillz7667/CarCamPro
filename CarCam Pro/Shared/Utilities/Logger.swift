@@ -8,4 +8,5 @@ enum AppLogger {
     nonisolated static let incident = Logger(subsystem: "Res.CarCam-Pro", category: "incident")
     nonisolated static let ui = Logger(subsystem: "Res.CarCam-Pro", category: "ui")
     nonisolated static let location = Logger(subsystem: "Res.CarCam-Pro", category: "location")
+    nonisolated static let detection = Logger(subsystem: "Res.CarCam-Pro", category: "detection")
 }

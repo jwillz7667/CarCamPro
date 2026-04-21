@@ -166,6 +166,15 @@ final class RecordingEngine {
     /// Last observed location sample (stamped onto each clip finalization).
     private(set) var lastLocationSample: LocationSample?
 
+    /// Whether the parking sentry is armed. When true, the engine keeps the
+    /// capture session warm and starts a new session automatically in
+    /// response to an incident event while idle.
+    private(set) var parkingSentryEnabled: Bool = false
+
+    func setParkingSentryEnabled(_ enabled: Bool) {
+        parkingSentryEnabled = enabled
+    }
+
     /// Current session's drive distance (miles). 0 when idle.
     var currentSessionMiles: Double { sessionDistanceMeters / 1609.344 }
 

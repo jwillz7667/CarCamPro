@@ -1,36 +1,41 @@
 import SwiftUI
 
-/// Root shell of the application after onboarding. Renders the active tab's
-/// root view atop the custom bottom `CCTabBar`. The landscape LIVE tab hides
-/// the tab bar so the HUD gets full bleed.
+/// Root shell of the application after onboarding. Uses the native iOS 26
+/// `TabView` so the tab bar automatically picks up Liquid Glass, the new
+/// expanded-pill selection indicator, and dynamic-type scaling for free.
+///
+/// The LIVE tab intentionally appears in the center slot — that's where the
+/// user's thumb naturally lands and where the most important action (hit
+/// "record") lives.
 struct MainTabView: View {
-    @State private var active: CCTab = .home
+    @State private var selection: MainTab = .home
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            CCTheme.void.ignoresSafeArea()
+        TabView(selection: $selection) {
+            Tab("Home", systemImage: "house.fill", value: MainTab.home) {
+                HomeDashboardView()
+            }
 
-            content
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .ignoresSafeArea(.keyboard)
+            Tab("Live", systemImage: "video.circle.fill", value: MainTab.live) {
+                LiveCamView()
+            }
 
-            if active != .live {
-                CCTabBar(active: $active)
-                    .transition(.opacity)
+            Tab("Map", systemImage: "map.fill", value: MainTab.map) {
+                MapDashboardView()
+            }
+
+            Tab("Trips", systemImage: "list.bullet.rectangle.fill", value: MainTab.trips) {
+                TripsListView()
+            }
+
+            Tab("Settings", systemImage: "gearshape.fill", value: MainTab.settings) {
+                SettingsView()
             }
         }
-        .statusBarHidden(active == .live)
-        .animation(.easeInOut(duration: 0.2), value: active)
+        .tint(CCTheme.accent)
     }
+}
 
-    @ViewBuilder
-    private var content: some View {
-        switch active {
-        case .home:     HomeDashboardView(activeTab: $active)
-        case .live:     LiveCamView(activeTab: $active)
-        case .map:      MapDashboardView(activeTab: $active)
-        case .trips:    TripsListView(activeTab: $active)
-        case .settings: SettingsView()
-        }
-    }
+enum MainTab: Hashable {
+    case home, live, map, trips, settings
 }

@@ -1,52 +1,59 @@
 import SwiftUI
 
-/// Design tokens for the CarCam "technical instrument-cluster" aesthetic.
-/// All colors mirror the iOS 26 dark system palette, with a small set of
-/// branded signal colors (amber = primary accent, cyan = telemetry, etc.).
+/// Design tokens — the palette is iOS-native system colors wherever possible,
+/// with CarCam's amber as the only branded accent. Every UI surface should
+/// prefer `Color.*` system semantics over these tokens so the app feels
+/// native on every iOS version.
 enum CCTheme {
-    // MARK: Surfaces
-    static let void            = rgb(0x00, 0x00, 0x00)
-    static let bg              = rgb(0x1C, 0x1C, 0x1E)
-    static let panel           = rgb(0x2C, 0x2C, 0x2E)
-    static let panelHi         = rgb(0x3A, 0x3A, 0x3C)
-    static let rule            = Color(red: 84.0/255, green: 84.0/255, blue: 88.0/255, opacity: 0.65)
-    static let ruleHi          = Color(red: 84.0/255, green: 84.0/255, blue: 88.0/255, opacity: 0.95)
+    // MARK: Branded accent
+    /// Primary brand accent (amber). Pairs with `.tint(CCTheme.accent)` at the
+    /// app root so every native control (Picker, Toggle, NavigationLink
+    /// chevron) picks it up automatically.
+    static let accent          = Color(red: 0xFF / 255, green: 0x9F / 255, blue: 0x0A / 255)
 
-    // MARK: Label hierarchy (dark)
-    static let ink             = Color.white
-    static let ink2            = Color(red: 235.0/255, green: 235.0/255, blue: 245.0/255, opacity: 0.78)
-    static let ink3            = Color(red: 235.0/255, green: 235.0/255, blue: 245.0/255, opacity: 0.60)
-    static let ink4            = Color(red: 235.0/255, green: 235.0/255, blue: 245.0/255, opacity: 0.38)
+    // MARK: Signal colors (iOS dark variants — match system feel)
+    static let amber           = Color(red: 0xFF / 255, green: 0x9F / 255, blue: 0x0A / 255)
+    static let cyan            = Color(red: 0x64 / 255, green: 0xD2 / 255, blue: 0xFF / 255)
+    static let red             = Color(red: 0xFF / 255, green: 0x45 / 255, blue: 0x3A / 255)
+    static let green           = Color(red: 0x30 / 255, green: 0xD1 / 255, blue: 0x58 / 255)
+    static let blue            = Color(red: 0x0A / 255, green: 0x84 / 255, blue: 0xFF / 255)
 
-    // MARK: Signal colors (iOS system dark variants)
-    static let amber           = rgb(0xFF, 0x9F, 0x0A)
-    static let amberDim        = rgb(0xC7, 0x76, 0x00)
-    static let cyan            = rgb(0x64, 0xD2, 0xFF)
-    static let cyanDim         = rgb(0x3D, 0xA5, 0xCC)
-    static let red             = rgb(0xFF, 0x45, 0x3A)
-    static let green           = rgb(0x30, 0xD1, 0x58)
-    static let blue            = rgb(0x0A, 0x84, 0xFF)
+    // MARK: Corner radius tokens
+    static let radiusPill:   CGFloat = 9999
+    static let radiusLarge:  CGFloat = 26      // iOS inset-grouped list cards
+    static let radiusCard:   CGFloat = 20
+    static let radiusButton: CGFloat = 14
+    static let radiusInput:  CGFloat = 12
 
-    private static func rgb(_ r: Int, _ g: Int, _ b: Int) -> Color {
-        Color(red: Double(r) / 255.0, green: Double(g) / 255.0, blue: Double(b) / 255.0)
+    // MARK: Spacing tokens
+    enum Space {
+        static let xs:  CGFloat = 4
+        static let sm:  CGFloat = 8
+        static let md:  CGFloat = 12
+        static let lg:  CGFloat = 16
+        static let xl:  CGFloat = 24
+        static let xxl: CGFloat = 32
     }
 }
 
-/// Font presets. Monospaced readouts use SF Mono via the `.monospaced()` design;
-/// display/body use the standard SF Pro (system) stack.
+/// Typography — SF Pro everywhere. Display is rounded for marketing/hero
+/// surfaces (Home title), Text is default for body, Mono reserved for
+/// numeric readouts only (timecodes, speed, g-force).
 enum CCFont {
-    /// Mono "technical readout" — tabular digits, letterSpacing via `.kerning`.
+    /// Rounded SF Pro — used for dashboard hero text.
+    static func rounded(_ size: CGFloat, weight: Font.Weight = .semibold) -> Font {
+        .system(size: size, weight: weight, design: .rounded)
+    }
+
+    /// Monospaced digits — used for live numeric readouts (speed, timecode).
     static func mono(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
         .system(size: size, weight: weight, design: .monospaced)
     }
 
-    /// Display — SF Pro Display, tight letterSpacing, used for large titles.
-    static func display(_ size: CGFloat, weight: Font.Weight = .light) -> Font {
-        .system(size: size, weight: weight, design: .default)
-    }
-
-    /// Body sans — SF Pro Text / system default.
-    static func sans(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
+    /// Default SF Pro — body text, titles, captions. Use the standard
+    /// dynamic-type text styles (`.title`, `.body`, etc.) directly in views
+    /// when possible; this helper is only for non-standard sizes.
+    static func system(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
         .system(size: size, weight: weight, design: .default)
     }
 }

@@ -4,27 +4,16 @@ import CoreLocation
 import CoreMotion
 import Photos
 
-/// Permission item — maps to an iOS system API call.
 enum OnboardingPermission: String, CaseIterable, Identifiable {
     case camera, location, motion, microphone, photos
 
     var id: String { rawValue }
 
-    var code: String {
-        switch self {
-        case .camera:     return "CAM"
-        case .location:   return "LOC"
-        case .motion:     return "MOT"
-        case .microphone: return "MIC"
-        case .photos:     return "PHO"
-        }
-    }
-
-    var label: String {
+    var title: String {
         switch self {
         case .camera:     return "Camera"
-        case .location:   return "Location (Always)"
-        case .motion:     return "Motion & Orientation"
+        case .location:   return "Location"
+        case .motion:     return "Motion"
         case .microphone: return "Microphone"
         case .photos:     return "Photos"
         }
@@ -32,73 +21,64 @@ enum OnboardingPermission: String, CaseIterable, Identifiable {
 
     var subtitle: String {
         switch self {
-        case .camera:     return "Required for video capture."
-        case .location:   return "GPS, speed, and trip geofencing."
-        case .motion:     return "G-force and impact detection."
-        case .microphone: return "Optional — for voice memos."
-        case .photos:     return "To save locked clips to library."
+        case .camera:     return "Record video while driving."
+        case .location:   return "GPS speed, heading, and clip geotagging."
+        case .motion:     return "Detect impacts and hard braking."
+        case .microphone: return "Capture audio with your footage."
+        case .photos:     return "Save locked incident clips to your library."
         }
     }
 
-    var required: Bool {
-        self == .camera || self == .location || self == .motion
+    var symbol: String {
+        switch self {
+        case .camera:     return "camera.fill"
+        case .location:   return "location.fill"
+        case .motion:     return "waveform.path.ecg"
+        case .microphone: return "mic.fill"
+        case .photos:     return "photo.fill"
+        }
     }
 }
 
 enum PermissionStatus: Equatable {
-    case pending
-    case granted
-    case denied
-    case skipped
+    case pending, granted, denied
 }
 
 struct OnboardingPermissionsView: View {
+    let onContinue: () -> Void
+
     @State private var statuses: [OnboardingPermission: PermissionStatus] = [:]
     @State private var motionManager = CMMotionManager()
     @State private var locationDelegate: PermissionsLocationDelegate?
-    let onContinue: () -> Void
 
     var body: some View {
         OnboardingFrame(step: 2) {
-            VStack(alignment: .leading, spacing: 0) {
-                CCLabel("02 — Authorizations", size: 10, color: CCTheme.amber)
-                    .padding(.bottom, 8)
+            OnboardingTitle(
+                eyebrow: "Authorizations",
+                title: "Grant access",
+                subtitle: "CarCam Pro only requests what it needs. You can change any of these later in iOS Settings."
+            )
 
-                Text("Grant the sensors\nCarCam needs.")
-                    .font(CCFont.display(30, weight: .light))
-                    .kerning(-0.6)
-                    .foregroundStyle(CCTheme.ink)
-                    .padding(.bottom, 36)
-
-                VStack(spacing: 0) {
-                    Rectangle().fill(CCTheme.rule).frame(height: 1)
-                    ForEach(OnboardingPermission.allCases) { perm in
-                        PermissionRow(
-                            permission: perm,
-                            status: statuses[perm] ?? .pending
-                        )
-                        Rectangle().fill(CCTheme.rule).frame(height: 1)
-                    }
+            VStack(spacing: CCTheme.Space.md) {
+                ForEach(OnboardingPermission.allCases) { perm in
+                    PermissionCard(
+                        permission: perm,
+                        status: statuses[perm] ?? .pending
+                    )
                 }
-
-                Spacer(minLength: 24)
-
-                OnboardingButton(title: "Authorize all", primary: true) {
-                    Task { await requestAll() }
-                }
-                OnboardingButton(title: "Continue") {
-                    onContinue()
-                }
-                .padding(.top, 8)
             }
-            .padding(.horizontal, 28)
-            .padding(.top, 110)
-            .padding(.bottom, 90)
+        } footer: {
+            OnboardingPrimaryButton(title: "Authorize All") {
+                Task { await requestAll() }
+            }
+            OnboardingSecondaryButton(title: "Continue") {
+                onContinue()
+            }
         }
         .task { refreshStatuses() }
     }
 
-    // MARK: - Permission logic
+    // MARK: - Status refresh
 
     private func refreshStatuses() {
         statuses[.camera] = mapAV(AVCaptureDevice.authorizationStatus(for: .video))
@@ -109,23 +89,25 @@ struct OnboardingPermissionsView: View {
     }
 
     private func requestAll() async {
-        // Camera
         let cam = await AVCaptureDevice.requestAccess(for: .video)
         statuses[.camera] = cam ? .granted : .denied
 
-        // Microphone
         let mic = await AVCaptureDevice.requestAccess(for: .audio)
         statuses[.microphone] = mic ? .granted : .denied
 
-        // Location — CLLocationManager requires delegate callbacks.
         await requestLocation()
-
-        // Motion — pinging with a one-shot query is the only supported trigger.
         await requestMotion()
 
-        // Photos (add-only)
-        let p = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
-        statuses[.photos] = mapPhotos(p)
+        let photos = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+        statuses[.photos] = mapPhotos(photos)
+
+        // If the critical permissions are granted, auto-advance. Otherwise
+        // the user can tap "Continue" to move on without them.
+        if statuses[.camera] == .granted &&
+           statuses[.location] == .granted &&
+           statuses[.motion] == .granted {
+            onContinue()
+        }
     }
 
     private func requestLocation() async {
@@ -152,6 +134,8 @@ struct OnboardingPermissionsView: View {
             }
         }
     }
+
+    // MARK: - Helpers
 
     private func mapAV(_ status: AVAuthorizationStatus) -> PermissionStatus {
         switch status {
@@ -181,58 +165,66 @@ struct OnboardingPermissionsView: View {
     }
 }
 
-private struct PermissionRow: View {
+// MARK: - Row card
+
+private struct PermissionCard: View {
     let permission: OnboardingPermission
     let status: PermissionStatus
 
     var body: some View {
-        HStack(spacing: 16) {
-            CCLabel(permission.code, size: 10, color: CCTheme.ink3)
-                .frame(width: 32, alignment: .leading)
+        HStack(spacing: CCTheme.Space.md) {
+            Image(systemName: permission.symbol)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(CCTheme.accent)
+                .frame(width: 36, height: 36)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(CCTheme.accent.opacity(0.12))
+                )
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(permission.label)
-                    .font(CCFont.sans(15))
-                    .foregroundStyle(CCTheme.ink)
+                Text(permission.title)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.primary)
                 Text(permission.subtitle)
-                    .font(CCFont.sans(12))
-                    .foregroundStyle(CCTheme.ink3)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
             }
 
             Spacer()
 
-            StatusBadge(status: status, required: permission.required)
+            statusBadge
         }
-        .padding(.vertical, 18)
+        .padding(CCTheme.Space.md)
+        .background(
+            RoundedRectangle(cornerRadius: CCTheme.radiusLarge, style: .continuous)
+                .fill(Color(.secondarySystemGroupedBackground))
+        )
+    }
+
+    private var statusBadge: some View {
+        Group {
+            switch status {
+            case .granted:
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(CCTheme.green)
+            case .denied:
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+            case .pending:
+                Image(systemName: "circle.dashed")
+                    .font(.title3)
+                    .foregroundStyle(.tertiary)
+            }
+        }
     }
 }
 
-private struct StatusBadge: View {
-    let status: PermissionStatus
-    let required: Bool
-
-    private var palette: (Color, String) {
-        switch status {
-        case .granted: return (CCTheme.green, "✓ OK")
-        case .pending: return (CCTheme.amber, "AUTH")
-        case .denied:  return (CCTheme.red, required ? "FAIL" : "SKIP")
-        case .skipped: return (CCTheme.ink4, "SKIP")
-        }
-    }
-
-    var body: some View {
-        Text(palette.1)
-            .font(CCFont.mono(9, weight: .medium))
-            .kerning(1.8)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .foregroundStyle(palette.0)
-            .overlay(Rectangle().stroke(palette.0, lineWidth: 1))
-    }
-}
-
-/// Small adapter class needed because `CLLocationManager` callbacks are
-/// delegate-based; `requestWhenInUseAuthorization()` doesn't return.
+/// Tiny delegate adapter so `requestWhenInUseAuthorization()` works with
+/// async/await — CLLocationManager reports status via delegate callback.
 private final class PermissionsLocationDelegate: NSObject, CLLocationManagerDelegate, @unchecked Sendable {
     private let manager = CLLocationManager()
     private let onComplete: (CLAuthorizationStatus) -> Void
@@ -248,7 +240,7 @@ private final class PermissionsLocationDelegate: NSObject, CLLocationManagerDele
     func start() {
         let status = manager.authorizationStatus
         if status != .notDetermined {
-            complete(with: status)
+            resolve(status)
             return
         }
         manager.requestWhenInUseAuthorization()
@@ -257,10 +249,10 @@ private final class PermissionsLocationDelegate: NSObject, CLLocationManagerDele
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         let status = manager.authorizationStatus
         guard status != .notDetermined else { return }
-        complete(with: status)
+        resolve(status)
     }
 
-    private func complete(with status: CLAuthorizationStatus) {
+    private func resolve(_ status: CLAuthorizationStatus) {
         guard !hasResolved else { return }
         hasResolved = true
         onComplete(status)
