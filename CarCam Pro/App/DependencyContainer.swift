@@ -15,12 +15,13 @@ final class DependencyContainer {
     let incidentDetector: IncidentDetector
     let locationService: LocationService
     let settings: AppSettings
+    let apiClient: APIClientProtocol
 
     private(set) var settingsCoordinator: SettingsCoordinator?
     private(set) var storageManager: StorageManager?
     var modelContainer: ModelContainer?
 
-    init() {
+    init(apiClient: APIClientProtocol = APIClient()) {
         let camera = CameraService()
         let thermal = ThermalMonitor()
         let incident = IncidentDetector()
@@ -32,6 +33,7 @@ final class DependencyContainer {
         self.locationService = location
         self.recordingEngine = RecordingEngine(cameraService: camera)
         self.settings = .shared
+        self.apiClient = apiClient
     }
 
     func configure(modelContainer: ModelContainer) {
